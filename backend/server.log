@@ -1,0 +1,4 @@
+◇ injected env (4) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
+◇ injected env (0) from .env // tip: ◈ secrets for agents [www.dotenvx.com]
+MongoDB Atlas connected: ac-ji2kiwc-shard-00-00.5esgzdu.mongodb.net
+Backend running on http://localhost:5000

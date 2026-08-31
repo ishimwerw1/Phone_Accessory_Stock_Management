@@ -1,0 +1,125 @@
+const PERMISSIONS = {
+  PRODUCTS_CREATE: 'products.create',
+  PRODUCTS_READ: 'products.read',
+  PRODUCTS_UPDATE: 'products.update',
+  PRODUCTS_DELETE: 'products.delete',
+  CATEGORIES_CREATE: 'categories.create',
+  CATEGORIES_READ: 'categories.read',
+  CATEGORIES_UPDATE: 'categories.update',
+  CATEGORIES_DELETE: 'categories.delete',
+  BRANDS_CREATE: 'brands.create',
+  BRANDS_READ: 'brands.read',
+  BRANDS_UPDATE: 'brands.update',
+  BRANDS_DELETE: 'brands.delete',
+  PHONEMODELS_CREATE: 'phonemodels.create',
+  PHONEMODELS_READ: 'phonemodels.read',
+  PHONEMODELS_UPDATE: 'phonemodels.update',
+  PHONEMODELS_DELETE: 'phonemodels.delete',
+  STOCK_CREATE: 'stock.create',
+  STOCK_READ: 'stock.read',
+  STOCK_ADJUST: 'stock.adjust',
+  STOCK_RETURN: 'stock.return',
+  STOCK_DAMAGED: 'stock.damaged',
+  SALES_CREATE: 'sales.create',
+  SALES_READ: 'sales.read',
+  SALES_CANCEL: 'sales.cancel',
+  PAYMENTS_CREATE: 'payments.create',
+  PAYMENTS_READ: 'payments.read',
+  LOANS_CREATE: 'loans.create',
+  LOANS_READ: 'loans.read',
+  LOANS_UPDATE: 'loans.update',
+  LOANS_REPAY: 'loans.repay',
+  CUSTOMERS_CREATE: 'customers.create',
+  CUSTOMERS_READ: 'customers.read',
+  CUSTOMERS_UPDATE: 'customers.update',
+  CUSTOMERS_DELETE: 'customers.delete',
+  SUPPLIERS_CREATE: 'suppliers.create',
+  SUPPLIERS_READ: 'suppliers.read',
+  SUPPLIERS_UPDATE: 'suppliers.update',
+  SUPPLIERS_DELETE: 'suppliers.delete',
+  REPORTS_READ: 'reports.read',
+  AUDITLOGS_READ: 'auditLogs.read',
+  USERS_CREATE: 'users.create',
+  USERS_READ: 'users.read',
+  USERS_UPDATE: 'users.update',
+  USERS_DELETE: 'users.delete',
+  SETTINGS_READ: 'settings.read',
+  SETTINGS_UPDATE: 'settings.update',
+  NOTIFICATIONS_READ: 'notifications.read',
+};
+
+const ALL = Object.values(PERMISSIONS);
+
+const ROLES = {
+  SUPER_ADMIN: { name: 'Super Admin', permissions: ALL },
+  MANAGER: {
+    name: 'Manager',
+    permissions: [
+      PERMISSIONS.PRODUCTS_CREATE, PERMISSIONS.PRODUCTS_READ, PERMISSIONS.PRODUCTS_UPDATE,
+      PERMISSIONS.STOCK_CREATE, PERMISSIONS.STOCK_READ, PERMISSIONS.STOCK_ADJUST,
+      PERMISSIONS.STOCK_RETURN, PERMISSIONS.STOCK_DAMAGED,
+      PERMISSIONS.SALES_CREATE, PERMISSIONS.SALES_READ, PERMISSIONS.SALES_CANCEL,
+      PERMISSIONS.PAYMENTS_CREATE, PERMISSIONS.PAYMENTS_READ,
+      PERMISSIONS.LOANS_CREATE, PERMISSIONS.LOANS_READ, PERMISSIONS.LOANS_UPDATE, PERMISSIONS.LOANS_REPAY,
+      PERMISSIONS.CUSTOMERS_CREATE, PERMISSIONS.CUSTOMERS_READ, PERMISSIONS.CUSTOMERS_UPDATE,
+      PERMISSIONS.SUPPLIERS_CREATE, PERMISSIONS.SUPPLIERS_READ, PERMISSIONS.SUPPLIERS_UPDATE,
+      PERMISSIONS.CATEGORIES_CREATE, PERMISSIONS.CATEGORIES_READ, PERMISSIONS.CATEGORIES_UPDATE,
+      PERMISSIONS.BRANDS_CREATE, PERMISSIONS.BRANDS_READ, PERMISSIONS.BRANDS_UPDATE,
+      PERMISSIONS.PHONEMODELS_CREATE, PERMISSIONS.PHONEMODELS_READ, PERMISSIONS.PHONEMODELS_UPDATE,
+      PERMISSIONS.REPORTS_READ, PERMISSIONS.AUDITLOGS_READ,
+      PERMISSIONS.SETTINGS_READ, PERMISSIONS.SETTINGS_UPDATE,
+      PERMISSIONS.NOTIFICATIONS_READ,
+    ],
+  },
+  STOREKEEPER: {
+    name: 'Storekeeper',
+    permissions: [
+      PERMISSIONS.PRODUCTS_CREATE, PERMISSIONS.PRODUCTS_READ, PERMISSIONS.PRODUCTS_UPDATE,
+      PERMISSIONS.CATEGORIES_READ, PERMISSIONS.BRANDS_READ, PERMISSIONS.PHONEMODELS_READ,
+      PERMISSIONS.STOCK_CREATE, PERMISSIONS.STOCK_READ, PERMISSIONS.STOCK_ADJUST,
+      PERMISSIONS.STOCK_RETURN, PERMISSIONS.STOCK_DAMAGED,
+      PERMISSIONS.SUPPLIERS_CREATE, PERMISSIONS.SUPPLIERS_READ, PERMISSIONS.SUPPLIERS_UPDATE,
+      PERMISSIONS.NOTIFICATIONS_READ,
+    ],
+  },
+  CASHIER: {
+    name: 'Cashier',
+    permissions: [
+      PERMISSIONS.PRODUCTS_READ, PERMISSIONS.CATEGORIES_READ, PERMISSIONS.BRANDS_READ,
+      PERMISSIONS.PHONEMODELS_READ, PERMISSIONS.STOCK_READ,
+      PERMISSIONS.SALES_CREATE, PERMISSIONS.SALES_READ,
+      PERMISSIONS.PAYMENTS_CREATE, PERMISSIONS.PAYMENTS_READ,
+      PERMISSIONS.LOANS_CREATE, PERMISSIONS.LOANS_READ, PERMISSIONS.LOANS_REPAY,
+      PERMISSIONS.CUSTOMERS_CREATE, PERMISSIONS.CUSTOMERS_READ, PERMISSIONS.CUSTOMERS_UPDATE,
+      PERMISSIONS.NOTIFICATIONS_READ,
+    ],
+  },
+};
+
+const PAYMENT_METHODS = ['CASH', 'MOMO', 'BANK', 'LOAN'];
+const PRODUCT_CONDITIONS = ['NEW', 'ORIGINAL', 'OEM', 'USED', 'REFURBISHED', 'COMPATIBLE'];
+const STOCK_TYPES = ['OPENING_STOCK', 'STOCK_IN', 'SALE', 'RETURN', 'DAMAGED', 'LOST', 'ADJUSTMENT', 'TRANSFER'];
+const LOAN_STATUSES = ['ACTIVE', 'PARTIALLY_PAID', 'PAID', 'OVERDUE', 'CANCELLED'];
+const SALE_STATUSES = ['COMPLETED', 'CANCELLED'];
+const PAYMENT_STATUSES = ['PAID', 'PARTIALLY_PAID', 'UNPAID'];
+
+const DEFAULT_PHONE_BRANDS = [
+  'Samsung', 'Apple', 'Tecno', 'Infinix', 'itel', 'Xiaomi', 'Redmi', 'Oppo', 'Vivo',
+  'Huawei', 'Nokia', 'OnePlus', 'Realme', 'Motorola', 'Google Pixel', 'Honor', 'ZTE',
+];
+
+const DEFAULT_CATEGORIES = [
+  { name: 'Screens', children: ['LCD', 'OLED', 'AMOLED', 'Touch Screen', 'Display Assembly'] },
+  { name: 'Batteries', children: [] },
+  { name: 'Backdoors', children: ['Original', 'OEM', 'Compatible'] },
+  { name: 'Charging Parts', children: ['Charging Ports', 'Charging Flex', 'USB Connectors'] },
+  { name: 'Camera Parts', children: ['Front Camera', 'Rear Camera', 'Camera Glass'] },
+  { name: 'Audio Parts', children: ['Speaker', 'Earpiece', 'Microphone'] },
+  { name: 'Motherboards / Boards', children: [] },
+  { name: 'ICs & Components', children: [] },
+  { name: 'Repair Materials', children: ['Glue', 'Adhesive', 'Solder', 'Flux'] },
+  { name: 'Accessories', children: ['Chargers', 'Cables', 'Cases', 'Screen Protectors', 'Earphones'] },
+  { name: 'Tools', children: ['Screwdrivers', 'Opening Tools', 'Soldering Tools', 'Repair Equipment'] },
+];
+
+module.exports = { PERMISSIONS, ROLES, ALL, PAYMENT_METHODS, PRODUCT_CONDITIONS, STOCK_TYPES, LOAN_STATUSES, SALE_STATUSES, PAYMENT_STATUSES, DEFAULT_PHONE_BRANDS, DEFAULT_CATEGORIES };

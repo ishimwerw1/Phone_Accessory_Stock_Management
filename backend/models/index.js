@@ -1,0 +1,17 @@
+module.exports = {
+  User: require('./User'),
+  Brand: require('./Brand'),
+  PhoneModel: require('./PhoneModel'),
+  Category: require('./Category'),
+  Product: require('./Product'),
+  Supplier: require('./Supplier'),
+  Customer: require('./Customer'),
+  Sale: require('./Sale'),
+  Payment: require('./Payment'),
+  Loan: require('./Loan'),
+  LoanPayment: require('./LoanPayment'),
+  StockTransaction: require('./StockTransaction'),
+  Notification: require('./Notification'),
+  AuditLog: require('./AuditLog'),
+  Setting: require('./Setting'),
+};

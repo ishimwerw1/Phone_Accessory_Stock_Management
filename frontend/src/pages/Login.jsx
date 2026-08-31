@@ -1,0 +1,339 @@
+import { useState } from 'react'
+import { Form, Button, Alert, Spinner } from 'react-bootstrap'
+import { useNavigate } from 'react-router-dom'
+import PasswordInput from '../components/common/PasswordInput'
+import { useAuth } from '../context/AuthContext'
+import { useLanguage } from '../context/LanguageContext'
+
+export default function Login() {
+  const { login } = useAuth()
+  const { t, lang, setLang } = useLanguage()
+  const navigate = useNavigate()
+  const [form, setForm] = useState({ username: '', password: '' })
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+    try {
+      await login(form.username.trim(), form.password)
+      navigate('/dashboard')
+    } catch (err) {
+      setError(err?.response?.data?.message || 'Login failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="login-wrapper">
+      <style>{`
+        /* --- Animations Keyframes --- */
+        @keyframes cardFadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(20px) scale(0.98);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+
+        @keyframes floatLogo {
+          0%, 100% {
+            transform: translateY(0);
+          }
+          50% {
+            transform: translateY(-8px);
+          }
+        }
+
+        @keyframes bgShift {
+          0% { background-position: 0% 0%; }
+          50% { background-position: 0% 100%; }
+          100% { background-position: 0% 0%; }
+        }
+
+        @keyframes slideInLeft {
+          from {
+            opacity: 0;
+            transform: translateX(-15px);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+
+        @keyframes slideInRight {
+          from {
+            opacity: 0;
+            transform: translateX(15px);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+
+        /* --- Page Background --- */
+        .login-wrapper {
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: linear-gradient(180deg, #3b52f6 0%, #3b52f6 50%, #dce5fa 50%, #dce5fa 100%);
+          background-size: 100% 200%;
+          animation: bgShift 12s ease infinite;
+          padding: 20px;
+          font-family: system-ui, -apple-system, sans-serif;
+        }
+
+        /* --- Card Container --- */
+        .login-card-container {
+          display: flex;
+          width: 100%;
+          max-width: 880px;
+          min-height: 480px;
+          background-color: #ffffff;
+          border-radius: 24px;
+          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
+          overflow: hidden;
+          animation: cardFadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        /* --- Left Side: Form --- */
+        .login-form-side {
+          flex: 1;
+          padding: 48px 40px;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          animation: slideInLeft 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        .login-title {
+          font-size: 1.75rem;
+          font-weight: 700;
+          color: #1a1d2e;
+          margin-bottom: 24px;
+        }
+
+        .custom-label {
+          font-size: 0.85rem;
+          color: #8c94a0;
+          margin-bottom: 6px;
+        }
+
+        .login-form-side input.form-control {
+          background-color: #f1f4f9;
+          border: 1px solid transparent;
+          border-radius: 12px;
+          padding: 12px 16px;
+          font-size: 0.95rem;
+          color: #2b2d42;
+          transition: all 0.25s ease;
+        }
+
+        .login-form-side input.form-control:focus {
+          background-color: #ffffff;
+          box-shadow: 0 0 0 4px rgba(59, 82, 246, 0.15);
+          border-color: #3b52f6;
+        }
+
+        .custom-btn {
+          background-color: #3b52f6 !important;
+          border: none !important;
+          border-radius: 12px !important;
+          padding: 12px !important;
+          font-weight: 600 !important;
+          font-size: 1rem !important;
+          transition: transform 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease !important;
+        }
+
+        .custom-btn:hover {
+          background-color: #2d41d9 !important;
+          transform: translateY(-2px);
+          box-shadow: 0 8px 20px rgba(59, 82, 246, 0.3);
+        }
+
+        .custom-btn:active {
+          transform: translateY(0);
+        }
+
+        /* --- Right Side: Visual / Logo --- */
+        .login-visual-side {
+          flex: 1;
+          background-color: #f4f6fb;
+          padding: 40px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+          position: relative;
+          animation: slideInRight 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        .logo-display-container {
+          width: 130px;
+          height: 130px;
+          background: #ffffff;
+          border-radius: 20px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 10px 25px rgba(59, 82, 246, 0.12);
+          margin-bottom: 24px;
+          padding: 16px;
+          animation: floatLogo 4s ease-in-out infinite;
+          transition: transform 0.3s ease;
+        }
+
+        .logo-display-container:hover {
+          transform: scale(1.05);
+        }
+
+        .visual-logo {
+          max-width: 100%;
+          max-height: 100%;
+          object-fit: contain;
+        }
+
+        .visual-title {
+          font-size: 1.25rem;
+          font-weight: 700;
+          color: #1a1d2e;
+          margin-bottom: 8px;
+        }
+
+        .visual-subtitle {
+          font-size: 0.85rem;
+          color: #7d8597;
+          max-width: 280px;
+          line-height: 1.4;
+          margin-bottom: 24px;
+        }
+
+        /* Active Dots Animation */
+        .visual-dots {
+          display: flex;
+          gap: 6px;
+          margin-bottom: 20px;
+        }
+
+        .dot {
+          width: 28px;
+          height: 4px;
+          background-color: #d0d7de;
+          border-radius: 2px;
+          transition: background-color 0.3s ease, width 0.3s ease;
+        }
+
+        .dot.active {
+          background-color: #3b52f6;
+        }
+
+        .footer-copyright {
+          position: absolute;
+          bottom: 12px;
+          font-size: 0.7rem;
+          color: #a0a7b5;
+        }
+
+        @media (max-width: 768px) {
+          .login-card-container {
+            flex-direction: column-reverse;
+          }
+          .login-visual-side {
+            padding: 30px 20px 20px;
+          }
+        }
+      `}</style>
+
+      <div className="login-card-container">
+        {/* Left Side: Login Form */}
+        <div className="login-form-side">
+          <h2 className="login-title">Login</h2>
+
+          {error && (
+            <Alert variant="danger" className="py-2 small">
+              <i className="bi bi-exclamation-circle me-1" />
+              {error}
+            </Alert>
+          )}
+
+          <Form onSubmit={submit}>
+            <Form.Group className="mb-3">
+              <Form.Label className="custom-label">{t('username')}</Form.Label>
+              <Form.Control
+                type="text"
+                value={form.username}
+                onChange={(e) => setForm({ ...form, username: e.target.value })}
+                placeholder="admin@stock.com"
+                autoFocus
+                required
+              />
+            </Form.Group>
+
+            <Form.Group className="mb-3">
+              <Form.Label className="custom-label">{t('password')}</Form.Label>
+              <PasswordInput
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                placeholder="Enter your password"
+                required
+              />
+            </Form.Group>
+
+            <Button type="submit" className="custom-btn w-100 mt-2" disabled={loading}>
+              {loading ? (
+                <>
+                  <Spinner size="sm" className="me-2" />
+                  {t('loggingIn')}
+                </>
+              ) : (
+                t('signIn')
+              )}
+            </Button>
+          </Form>
+
+          {/* Language Toggle */}
+          <div className="text-center mt-4">
+            <Button
+              variant="link"
+              size="sm"
+              className="text-decoration-none text-muted p-0"
+              onClick={() => setLang(lang === 'en' ? 'rw' : 'en')}
+            >
+              <i className="bi bi-translate me-1" />
+              {lang === 'en' ? t('kinyarwanda') : t('english')}
+            </Button>
+          </div>
+        </div>
+
+        {/* Right Side: Animated Logo & Info */}
+        <div className="login-visual-side">
+          <div className="logo-display-container">
+            <img src="/logo.png" alt="logo" className="visual-logo" />
+          </div>
+          <h4 className="visual-title">{t('appName')}</h4>
+          <p className="visual-subtitle">{t('loginSubtitle')}</p>
+
+          <div className="visual-dots">
+            <span className="dot active"></span>
+            <span className="dot"></span>
+            <span className="dot"></span>
+          </div>
+
+          <div className="footer-copyright">
+            © {new Date().getFullYear()} Phone Accessories Stock Management Ltd
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
