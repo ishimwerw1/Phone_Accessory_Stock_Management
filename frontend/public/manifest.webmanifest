@@ -1,0 +1,121 @@
+{
+  "name": "Phone Accessories Stock Management",
+  "short_name": "Kakajwi Stock",
+  "description": "Manage phone spare parts, screens, batteries, boards, chargers, suppliers, customers, sales and loans.",
+  "theme_color": "#0d3b66",
+  "background_color": "#ffffff",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "browser"],
+  "orientation": "portrait",
+  "scope": "/",
+  "start_url": "/",
+  "categories": ["business", "productivity", "finance"],
+  "lang": "en",
+  "dir": "ltr",
+  "iarc_rating_id": "16+",
+  "prefer_related_applications": false,
+  "protocol_handlers": [
+    {
+      "protocol": "web+stock",
+      "url": "/?sale=%s"
+    }
+  ],
+  "edge_side_panel": {
+    "preferred_width": 400
+  },
+  "file_handlers": [
+    {
+      "action": "/products",
+      "accept": {
+        "application/vnd.ms-excel": [".csv", ".xls", ".xlsx"],
+        "text/csv": [".csv"]
+      },
+      "icons": [
+        { "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png" }
+      ],
+      "launch_type": "multiple-clients"
+    }
+  ],
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "short_name": "Dashboard",
+      "description": "View the overview dashboard",
+      "url": "/",
+      "icons": [
+        { "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png" }
+      ]
+    },
+    {
+      "name": "New Sale",
+      "short_name": "New Sale",
+      "description": "Record a new sale",
+      "url": "/sales/new",
+      "icons": [
+        { "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png" }
+      ]
+    },
+    {
+      "name": "Customers",
+      "short_name": "Customers",
+      "description": "Customer list and accounts",
+      "url": "/customers",
+      "icons": [
+        { "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png" }
+      ]
+    },
+    {
+      "name": "Products",
+      "short_name": "Products",
+      "description": "Product catalogue",
+      "url": "/products",
+      "icons": [
+        { "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png" }
+      ]
+    },
+    {
+      "name": "Loans",
+      "short_name": "Loans",
+      "description": "Outstanding loans and repayments",
+      "url": "/loans",
+      "icons": [
+        { "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png" }
+      ]
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "label": "Application dashboard",
+      "form_factor": "wide"
+    }
+  ]
+}
