@@ -65,6 +65,28 @@ export default function Sidebar({ open, onClose }) {
           </>
         )}
 
+        {(hasPermission('purchases.read') || hasPermission('purchases.create')) && (
+          <>
+            <GroupLabel>{t('purchases')}</GroupLabel>
+            {hasPermission('purchases.read') && <Item to="/purchases" icon="bi-bag" labelKey="purchases" />}
+            {hasPermission('purchases.read') && <Item to="/supplier-payments" icon="bi-credit-card" labelKey="supplierPayments" />}
+          </>
+        )}
+
+        {(hasPermission('expenses.read') || hasPermission('expenses.create')) && (
+          <>
+            <GroupLabel>{t('expenses')}</GroupLabel>
+            {hasPermission('expenses.read') && <Item to="/expenses" icon="bi-wallet2" labelKey="expenses" />}
+          </>
+        )}
+
+        {hasPermission('orders.read') && (
+          <>
+            <GroupLabel>{t('orders')}</GroupLabel>
+            <Item to="/orders" icon="bi-clipboard-check" labelKey="orders" />
+          </>
+        )}
+
         {hasPermission('payments.read') && (
           <>
             <GroupLabel>{t('payments')}</GroupLabel>
@@ -80,6 +102,8 @@ export default function Sidebar({ open, onClose }) {
             <Item to="/reports/customers" icon="bi-person-lines-fill" labelKey="customerReports" />
             <Item to="/reports/loans" icon="bi-credit-card-2-front" labelKey="loanReports" />
             <Item to="/reports/financial" icon="bi-bank" labelKey="financialReports" />
+            <Item to="/reports/expenses" icon="bi-wallet2" labelKey="expenseReports" />
+            <Item to="/reports/purchases" icon="bi-bag" labelKey="purchaseReports" />
           </>
         )}
       </Nav>

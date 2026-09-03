@@ -49,10 +49,17 @@ exports.deleteUser = asyncHandler(async (req, res) => {
 });
 
 exports.getAuditLogs = asyncHandler(async (req, res) => {
-  const { page = 1, limit = 20, search } = req.query;
+  const { page = 1, limit = 20, search, entity, user, from, to } = req.query;
   const filter = {};
   if (search) filter.$or = [{ action: { $regex: search, $options: 'i' } }, { userName: { $regex: search, $options: 'i' } }, { entity: { $regex: search, $options: 'i' } }];
+  if (entity) filter.entity = entity;
+  if (user) filter.user = user;
+  if (from || to) {
+    filter.date = {};
+    if (from) filter.date.$gte = new Date(from);
+    if (to) filter.date.$lte = new Date(to + 'T23:59:59');
+  }
   const total = await AuditLog.countDocuments(filter);
-  const logs = await AuditLog.find(filter).sort('-date').skip((page - 1) * limit).limit(Number(limit));
-  success(res, 'Audit logs', { logs, total });
+  const logs = await AuditLog.find(filter).sort('-date').skip((Number(page) - 1) * Number(limit)).limit(Number(limit));
+  success(res, 'Audit logs', { logs, total, pages: Math.ceil(total / Number(limit)) || 1, page: Number(page) });
 });

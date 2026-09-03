@@ -14,4 +14,8 @@ module.exports = {
   Notification: require('./Notification'),
   AuditLog: require('./AuditLog'),
   Setting: require('./Setting'),
+  Expense: require('./Expense'),
+  Purchase: require('./Purchase'),
+  SupplierPayment: require('./SupplierPayment'),
+  Order: require('./Order'),
 };

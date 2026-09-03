@@ -125,7 +125,7 @@ export default function Dashboard() {
       </div>
 
       {/* Quick actions */}
-      {(hasPermission('sales.create') || hasPermission('products.create') || hasPermission('stock.create')) && (
+      {(hasPermission('sales.create') || hasPermission('products.create') || hasPermission('stock.create') || hasPermission('expenses.create') || hasPermission('purchases.create')) && (
         <Row className="g-2 g-md-3 mb-3 mb-md-4 stagger qa-row">
           {hasPermission('sales.create') && (
             <Col xs={6} sm={4} md={4} xl={2}>
@@ -145,6 +145,20 @@ export default function Dashboard() {
             <Col xs={6} sm={4} md={4} xl={2}>
               <Link to="/stock/in" className="qa-tile text-decoration-none w-100" style={{ '--qa-color': '#b7791f' }}>
                 <i className="bi bi-box-arrow-in-down" /><span>{t('stockIn')}</span>
+              </Link>
+            </Col>
+          )}
+          {hasPermission('purchases.create') && (
+            <Col xs={6} sm={4} md={4} xl={2}>
+              <Link to="/purchases" className="qa-tile text-decoration-none w-100" style={{ '--qa-color': '#1a6fb5' }}>
+                <i className="bi bi-bag-plus" /><span>{t('purchases')}</span>
+              </Link>
+            </Col>
+          )}
+          {hasPermission('expenses.create') && (
+            <Col xs={6} sm={4} md={4} xl={2}>
+              <Link to="/expenses" className="qa-tile text-decoration-none w-100" style={{ '--qa-color': '#c0392b' }}>
+                <i className="bi bi-wallet2" /><span>{t('expenses')}</span>
               </Link>
             </Col>
           )}
@@ -191,16 +205,16 @@ export default function Dashboard() {
       {/* Secondary KPI Row */}
       <Row className="g-2 g-md-3 mb-3 mb-md-4 stagger">
         <Col xs={12} sm={6} xl={3}>
-          <StatCard icon="bi-exclamation-triangle" label={t('lowStockProducts')} value={data.lowStockCount} color="warning" link="/stock/low" />
+          <StatCard icon="bi-wallet2" label="Today's Expenses" value={`${Number(data.todayExpenses || 0).toLocaleString()} RWF`} color="danger" link="/expenses" />
         </Col>
         <Col xs={12} sm={6} xl={3}>
-          <StatCard icon="bi-x-octagon" label={t('outOfStockProducts')} value={data.outOfStockCount} color="danger" link="/stock/low" />
+          <StatCard icon="bi-bag" label="Today's Purchases" value={`${Number(data.todayPurchases || 0).toLocaleString()} RWF`} color="warning" sub={`${data.todayPurchaseCount || 0} purchase(s)`} link="/purchases" />
         </Col>
         <Col xs={12} sm={6} xl={3}>
-          <StatCard icon="bi-graph-up-arrow" label="Total Sales" value={`${Number(data.totalSalesValue || 0).toLocaleString()} RWF`} color="info" sub={`${Number(data.totalPaid || 0).toLocaleString()} RWF collected`} />
+          <StatCard icon="bi-credit-card" label="Supplier Debts" value={`${Number(data.outstandingSupplierDebts || 0).toLocaleString()} RWF`} color="danger" sub={`${data.supplierDebtCount || 0} unpaid purchase(s)`} link="/purchases" />
         </Col>
         <Col xs={12} sm={6} xl={3}>
-          <StatCard icon="bi-tools" label="Phone Spare Parts" value={data.totalProducts} color="primary" sub="Screens · Batteries · Boards · Chargers" />
+          <StatCard icon="bi-graph-up-arrow" label="Net Profit" value={`${Number(data.netProfit || 0).toLocaleString()} RWF`} color={data.netProfit >= 0 ? 'success' : 'danger'} sub={`Gross: ${Number(data.grossProfit || 0).toLocaleString()} RWF`} />
         </Col>
       </Row>
 
@@ -338,6 +352,45 @@ export default function Dashboard() {
               <div className="display-6 fw-bold text-danger">{Number(data.outstandingLoans || 0).toLocaleString()} RWF</div>
               <div className="text-muted small mt-1">Outstanding loan balance</div>
               <Button as={Link} to="/loans" variant="outline-danger" size="sm" className="mt-3"><i className="bi bi-cash-coin me-1" />{t('loans')}</Button>
+            </div>
+          </Card>
+        </Col>
+
+        <Col xs={12} lg={6}>
+          <Card className="shadow-sm border-0 h-100">
+            <Card.Header className="bg-white fw-semibold fs-6 py-3"><i className="bi bi-wallet2 me-2 text-warning" />Expenses & Purchases</Card.Header>
+            <div className="p-3">
+              <Row className="g-3 text-center">
+                <Col xs={6}>
+                  <div className="border rounded p-3">
+                    <div className="text-muted small mb-1"><i className="bi bi-calendar-day me-1" />Today's Expenses</div>
+                    <div className="fs-5 fw-bold text-danger">{Number(data.todayExpenses || 0).toLocaleString()} RWF</div>
+                  </div>
+                </Col>
+                <Col xs={6}>
+                  <div className="border rounded p-3">
+                    <div className="text-muted small mb-1"><i className="bi bi-calendar-day me-1" />Today's Purchases</div>
+                    <div className="fs-5 fw-bold text-primary">{Number(data.todayPurchases || 0).toLocaleString()} RWF</div>
+                  </div>
+                </Col>
+                <Col xs={6}>
+                  <div className="border rounded p-3">
+                    <div className="text-muted small mb-1"><i className="bi bi-credit-card me-1" />Supplier Debts</div>
+                    <div className="fs-5 fw-bold text-danger">{Number(data.outstandingSupplierDebts || 0).toLocaleString()} RWF</div>
+                  </div>
+                </Col>
+                <Col xs={6}>
+                  <div className="border rounded p-3">
+                    <div className="text-muted small mb-1"><i className="bi bi-graph-up me-1" />Net Profit</div>
+                    <div className={`fs-5 fw-bold ${data.netProfit >= 0 ? 'text-success' : 'text-danger'}`}>{Number(data.netProfit || 0).toLocaleString()} RWF</div>
+                  </div>
+                </Col>
+              </Row>
+              <div className="d-flex gap-2 mt-3 justify-content-center">
+                <Button as={Link} to="/expenses" variant="outline-danger" size="sm"><i className="bi bi-wallet2 me-1" />Expenses</Button>
+                <Button as={Link} to="/purchases" variant="outline-primary" size="sm"><i className="bi bi-bag me-1" />Purchases</Button>
+                <Button as={Link} to="/supplier-payments" variant="outline-info" size="sm"><i className="bi bi-credit-card me-1" />Supplier Payments</Button>
+              </div>
             </div>
           </Card>
         </Col>
