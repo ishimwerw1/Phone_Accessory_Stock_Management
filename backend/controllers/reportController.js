@@ -18,21 +18,41 @@ exports.dashboard = asyncHandler(async (req, res) => {
   const { period = 'today' } = req.query;
   const { start: periodStart } = dateRange(period, null, null);
   const periodFrom = periodStart || new Date();
+  const pStart = periodStart || new Date(new Date().setHours(0, 0, 0, 0));
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-  const [productStatsR, periodSalesR, salesTotalR, lowR, outR, topR, byMethodR, recent7R, loanTotalsR, recentTxnsR, custR, suppR, todayExpensesR, monthExpensesR, todayPurchasesR, supplierDebtsR, todayOrdersR, activeUsersR, purchasePaymentsR, monthSalesR] = await Promise.all([
+  const [
+    productStatsR, periodSalesR, salesTotalR,
+    periodPaymentsR, allTimePaymentsR, monthPaymentsR,
+    lowR, outR, topR, byMethodR, recent7R, loanTotalsR, recentTxnsR,
+    custR, suppR, todayExpensesR, monthExpensesR, todayPurchasesR, supplierDebtsR,
+    todayOrdersR, activeUsersR, purchasePaymentsR, monthSalesCostR,
+  ] = await Promise.all([
     Product.aggregate([
       { $match: { status: 'ACTIVE' } },
       { $group: { _id: null, count: { $sum: 1 }, items: { $sum: '$quantity' }, value: { $sum: { $multiply: ['$quantity', '$sellingPrice'] } } } },
     ]),
     Sale.aggregate([
-      { $match: { status: 'COMPLETED', createdAt: { $gte: periodStart || new Date(new Date().setHours(0, 0, 0, 0)) } } },
-      { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: '$total' }, paid: { $sum: '$amountPaid' }, sold: { $sum: { $size: '$items' } } } },
+      { $match: { status: { $ne: 'CANCELLED' }, createdAt: { $gte: pStart } } },
+      { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: '$total' }, sold: { $sum: { $size: '$items' } } } },
     ]),
     Sale.aggregate([
       { $match: { status: { $ne: 'CANCELLED' } } },
-      { $group: { _id: null, total: { $sum: '$total' }, paid: { $sum: '$amountPaid' }, cost: { $sum: { $reduce: { input: '$items', initialValue: 0, in: { $add: ['$$value', { $multiply: ['$$this.quantity', { $ifNull: ['$$this.cost', 0] }] }] } } } } } },
+      { $group: { _id: null, total: { $sum: '$total' }, cost: { $sum: { $reduce: { input: '$items', initialValue: 0, in: { $add: ['$$value', { $multiply: ['$$this.quantity', { $ifNull: ['$$this.cost', 0] }] }] } } } } } },
+    ]),
+    Payment.aggregate([
+      { $match: { status: 'PAID', date: { $gte: pStart } } },
+      { $group: { _id: null, paid: { $sum: '$amount' } } },
+    ]),
+    Payment.aggregate([
+      { $match: { status: 'PAID' } },
+      { $group: { _id: null, paid: { $sum: '$amount' } } },
+    ]),
+    Payment.aggregate([
+      { $match: { status: 'PAID', date: { $gte: monthStart } } },
+      { $group: { _id: null, paid: { $sum: '$amount' } } },
     ]),
     Product.find({ status: 'ACTIVE', quantity: { $gt: 0 }, $expr: { $lte: ['$quantity', '$minStock'] } }).select('name sku quantity minStock sellingPrice brand category'),
     Product.find({ status: 'ACTIVE', quantity: { $lte: 0 } }).select('name sku quantity minStock sellingPrice'),
@@ -56,40 +76,33 @@ exports.dashboard = asyncHandler(async (req, res) => {
     StockTransaction.find().populate('performedBy', 'name').sort('-date').limit(10),
     Customer.countDocuments({ status: 'ACTIVE' }),
     Supplier.countDocuments({ status: 'ACTIVE' }),
-    // Today's expenses
     Expense.aggregate([{ $match: { date: { $gte: todayStart } } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
-    // Month's expenses
-    Expense.aggregate([{ $match: { date: { $gte: new Date(now.getFullYear(), now.getMonth(), 1) } } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
-    // Today's purchases
+    Expense.aggregate([{ $match: { date: { $gte: monthStart } } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
     Purchase.aggregate([{ $match: { createdAt: { $gte: todayStart }, status: { $ne: 'CANCELLED' } } }, { $group: { _id: null, total: { $sum: '$totalAmount' }, count: { $sum: 1 } } }]),
-    // Outstanding supplier debts
     Purchase.aggregate([{ $match: { paymentStatus: { $ne: 'PAID' } } }, { $group: { _id: null, total: { $sum: '$remainingAmount' }, count: { $sum: 1 } } }]),
-    // Today's orders
     Order.countDocuments({ createdAt: { $gte: todayStart } }),
-    // Active users (approximate)
     require('../models').User.countDocuments({ isActive: true }),
-    // Purchase payments made this month (cash out to suppliers for inventory)
-    // Includes initial downpayments on purchases created this month + supplier payments recorded this month
     Purchase.aggregate([
-      { $match: { createdAt: { $gte: new Date(now.getFullYear(), now.getMonth(), 1) }, status: { $ne: 'CANCELLED' } } },
+      { $match: { createdAt: { $gte: monthStart }, status: { $ne: 'CANCELLED' } } },
       { $project: { outflow: '$amountPaid' } },
       { $group: { _id: null, total: { $sum: '$outflow' } } },
     ]).then(async (purchaseOut) => {
-      const supplierOut = await SupplierPayment.aggregate([{ $match: { date: { $gte: new Date(now.getFullYear(), now.getMonth(), 1) } } }, { $group: { _id: null, total: { $sum: '$amount' } } }]);
-      const purchaseTotal = purchaseOut[0]?.total || 0;
-      const supplierTotal = supplierOut[0]?.total || 0;
-      return [{ _id: null, total: purchaseTotal + supplierTotal }];
+      const supplierOut = await SupplierPayment.aggregate([{ $match: { date: { $gte: monthStart } } }, { $group: { _id: null, total: { $sum: '$amount' } } }]);
+      return [{ _id: null, total: (purchaseOut[0]?.total || 0) + (supplierOut[0]?.total || 0) }];
     }),
-    // Current-month sales: revenue, cash collected, and COGS for a consistent monthly profit
     Sale.aggregate([
-      { $match: { status: { $ne: 'CANCELLED' }, createdAt: { $gte: new Date(now.getFullYear(), now.getMonth(), 1) } } },
-      { $group: { _id: null, total: { $sum: '$total' }, paid: { $sum: '$amountPaid' }, cost: { $sum: { $reduce: { input: '$items', initialValue: 0, in: { $add: ['$$value', { $multiply: ['$$this.quantity', { $ifNull: ['$$this.cost', 0] }] }] } } } } } },
+      { $match: { status: { $ne: 'CANCELLED' }, createdAt: { $gte: monthStart } } },
+      { $group: { _id: null, total: { $sum: '$total' }, cost: { $sum: { $reduce: { input: '$items', initialValue: 0, in: { $add: ['$$value', { $multiply: ['$$this.quantity', { $ifNull: ['$$this.cost', 0] }] }] } } } } } },
     ]),
   ]);
 
   const [productStats] = productStatsR;
   const [periodSales] = periodSalesR;
   const [salesTotal] = salesTotalR;
+  const periodPaid = periodPaymentsR[0]?.paid || 0;
+  const allTimePaid = allTimePaymentsR[0]?.paid || 0;
+  const monthPaid = monthPaymentsR[0]?.paid || 0;
+
   const low = lowR;
   const out = outR;
   const topProducts = topR;
@@ -103,10 +116,9 @@ exports.dashboard = asyncHandler(async (req, res) => {
   const grossProfitAllTime = totalSalesRevenue - totalCostOfGoods;
   const totalExpenses = monthExpensesR[0]?.total || 0;
   const totalPurchasePayments = purchasePaymentsR[0]?.total || 0;
-  const [monthSales] = monthSalesR || [];
+  const [monthSales] = monthSalesCostR || [];
   const monthRevenue = monthSales?.total || 0;
   const monthCost = monthSales?.cost || 0;
-  const monthPaid = monthSales?.paid || 0;
   const monthGrossProfit = monthRevenue - monthCost;
   const monthlyExpenses = totalExpenses;
   const monthNetProfit = monthGrossProfit - monthlyExpenses;
@@ -116,11 +128,11 @@ exports.dashboard = asyncHandler(async (req, res) => {
     totalStockItems: productStats?.items || 0,
     stockValue: productStats?.value || 0,
     todaySales: periodSales?.count || 0,
-    todayRevenue: periodSales?.paid || 0,
+    todayRevenue: periodPaid,
     totalCustomers: custR,
     totalSuppliers: suppR,
     totalSalesValue: totalSalesRevenue,
-    totalPaid: salesTotal?.paid || 0,
+    totalPaid: allTimePaid,
     totalRevenueCost: totalCostOfGoods,
     grossProfit: monthGrossProfit,
     grossProfitAllTime: grossProfitAllTime,
@@ -152,39 +164,72 @@ exports.dashboard = asyncHandler(async (req, res) => {
 exports.salesReport = asyncHandler(async (req, res) => {
   const { period = 'month', from, to, groupBy = 'day' } = req.query;
   const { start, end } = dateRange(period, from, to);
-  const match = { status: 'COMPLETED', ...(start && { createdAt: { $gte: start } }), ...(end && { createdAt: { $lte: end } }) };
+  const match = { status: { $ne: 'CANCELLED' }, ...(start && { createdAt: { $gte: start } }), ...(end && { createdAt: { $lte: end } }) };
+  const payMatch = { status: 'PAID', ...(start && { date: { $gte: start } }), ...(end && { date: { $lte: end } }) };
 
   const dateFmt = { day: '%Y-%m-%d', week: '%Y-%U', month: '%Y-%m', year: '%Y' };
-  const byDate = await Sale.aggregate([
-    { $match: match },
-    { $group: { _id: { $dateToString: { format: dateFmt[groupBy] || '%Y-%m-%d', date: '$createdAt' } }, total: { $sum: '$total' }, paid: { $sum: '$amountPaid' }, cost: { $sum: { $reduce: { input: '$items', initialValue: 0, in: { $add: ['$$value', { $multiply: ['$$this.quantity', { $ifNull: ['$$this.cost', 0] }] }] } } } }, count: { $sum: 1 } } },
-    { $sort: { _id: 1 } },
+
+  const [
+    byDateRaw, byMethodRaw, byProduct, byCashierRaw, byCustomerRaw, totalsRaw, byDatePay, byMethodPay, totalsPay, discountR,
+  ] = await Promise.all([
+    Sale.aggregate([
+      { $match: match },
+      { $group: { _id: { $dateToString: { format: dateFmt[groupBy] || '%Y-%m-%d', date: '$createdAt' } }, total: { $sum: '$total' }, cost: { $sum: { $reduce: { input: '$items', initialValue: 0, in: { $add: ['$$value', { $multiply: ['$$this.quantity', { $ifNull: ['$$this.cost', 0] }] }] } } } }, count: { $sum: 1 } } },
+      { $sort: { _id: 1 } },
+    ]),
+    Sale.aggregate([{ $match: match }, { $group: { _id: '$paymentMethod', total: { $sum: '$total' }, count: { $sum: 1 } } }]),
+    Sale.aggregate([
+      { $match: match }, { $unwind: '$items' },
+      { $group: { _id: '$items.name', qty: { $sum: '$items.quantity' }, revenue: { $sum: '$items.subtotal' }, model: { $first: '$items.modelName' }, brand: { $first: '$items.brandName' } } },
+      { $sort: { qty: -1 } },
+    ]),
+    Sale.aggregate([
+      { $match: match }, { $group: { _id: '$cashier', total: { $sum: '$total' }, count: { $sum: 1 } } },
+      { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'u' } },
+      { $project: { _id: 1, total: 1, count: 1, name: { $arrayElemAt: ['$u.name', 0] } } },
+    ]),
+    Sale.aggregate([
+      { $match: match }, { $group: { _id: '$customer', total: { $sum: '$total' }, count: { $sum: 1 } } },
+      { $lookup: { from: 'customers', localField: '_id', foreignField: '_id', as: 'c' } },
+      { $project: { _id: 1, total: 1, count: 1, name: { $arrayElemAt: ['$c.name', 0] }, phone: { $arrayElemAt: ['$c.phone', 0] } } },
+      { $sort: { total: -1 } }, { $limit: 20 },
+    ]),
+    Sale.aggregate([
+      { $match: match },
+      { $group: { _id: null, total: { $sum: '$total' }, cost: { $sum: { $reduce: { input: '$items', initialValue: 0, in: { $add: ['$$value', { $multiply: ['$$this.quantity', { $ifNull: ['$$this.cost', 0] }] }] } } } }, count: { $sum: 1 } } },
+    ]),
+    Payment.aggregate([
+      { $match: payMatch },
+      { $group: { _id: { $dateToString: { format: dateFmt[groupBy] || '%Y-%m-%d', date: '$date' } }, paid: { $sum: '$amount' } } },
+    ]),
+    Payment.aggregate([{ $match: payMatch }, { $group: { _id: '$method', paid: { $sum: '$amount' } } }]),
+    Payment.aggregate([{ $match: payMatch }, { $group: { _id: null, paid: { $sum: '$amount' } } }]),
+    Sale.aggregate([{ $match: match }, { $group: { _id: null, d: { $sum: '$discount' } } }]),
   ]);
-  const byMethod = await Sale.aggregate([{ $match: match }, { $group: { _id: '$paymentMethod', total: { $sum: '$total' }, paid: { $sum: '$amountPaid' }, count: { $sum: 1 } } }]);
-  const byProduct = await Sale.aggregate([
-    { $match: match }, { $unwind: '$items' },
-    { $group: { _id: '$items.name', qty: { $sum: '$items.quantity' }, revenue: { $sum: '$items.subtotal' }, model: { $first: '$items.modelName' }, brand: { $first: '$items.brandName' } } },
-    { $sort: { qty: -1 } },
-  ]);
-  const byCashier = await Sale.aggregate([
-    { $match: match }, { $group: { _id: '$cashier', total: { $sum: '$total' }, count: { $sum: 1 } } },
-    { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'u' } },
-    { $project: { _id: 1, total: 1, count: 1, name: { $arrayElemAt: ['$u.name', 0] } } },
-  ]);
-  const byCustomer = await Sale.aggregate([
-    { $match: match }, { $group: { _id: '$customer', total: { $sum: '$total' }, paid: { $sum: '$amountPaid' }, count: { $sum: 1 } } },
-    { $lookup: { from: 'customers', localField: '_id', foreignField: '_id', as: 'c' } },
-    { $project: { _id: 1, total: 1, paid: 1, count: 1, name: { $arrayElemAt: ['$c.name', 0] }, phone: { $arrayElemAt: ['$c.phone', 0] } } },
-    { $sort: { total: -1 } }, { $limit: 20 },
-  ]);
-  const totals = await Sale.aggregate([
-    { $match: match },
-    { $group: { _id: null, total: { $sum: '$total' }, paid: { $sum: '$amountPaid' }, cost: { $sum: { $reduce: { input: '$items', initialValue: 0, in: { $add: ['$$value', { $multiply: ['$$this.quantity', { $ifNull: ['$$this.cost', 0] }] }] } } } }, count: { $sum: 1 } } },
-  ]);
-  const t = totals[0] || { total: 0, paid: 0, cost: 0, count: 0 };
+
+  const payMap = {}; byDatePay.forEach((r) => { payMap[r._id] = r.paid; });
+  const byDate = byDateRaw.map((r) => ({ ...r, paid: payMap[r._id] || 0 }));
+
+  const payMethodMap = {}; byMethodPay.forEach((r) => { payMethodMap[r._id] = r.paid; });
+  const byMethod = byMethodRaw.map((r) => ({ ...r, paid: payMethodMap[r._id] || 0 }));
+
+  const paidByCustomer = {};
+  const cids = byCustomerRaw.map((r) => r._id).filter(Boolean);
+  if (cids.length > 0) {
+    const custPay = await Payment.aggregate([
+      { $match: { customer: { $in: cids }, ...payMatch } },
+      { $group: { _id: '$customer', paid: { $sum: '$amount' } } },
+    ]);
+    custPay.forEach((r) => { paidByCustomer[String(r._id)] = r.paid; });
+  }
+  const byCustomer = byCustomerRaw.map((r) => ({ ...r, paid: paidByCustomer[String(r._id)] || 0 }));
+
+  const t = totalsRaw[0] || { total: 0, cost: 0, count: 0 };
+  const paid = totalsPay[0]?.paid || 0;
   success(res, 'Sales report', {
-    byDate, byMethod, byProduct, byCashier, byCustomer, discount: await Sale.aggregate([{ $match: match }, { $group: { _id: null, d: { $sum: '$discount' } } }]).then((a) => a[0]?.d || 0),
-    totals: { ...t, profit: t.total - t.cost, outstanding: t.total - t.paid },
+    byDate, byMethod, byProduct, byCashier, byCustomer,
+    discount: discountR[0]?.d || 0,
+    totals: { ...t, paid, profit: t.total - t.cost, outstanding: Math.max(0, t.total - paid) },
   });
 });
 
@@ -280,14 +325,16 @@ exports.loanReport = asyncHandler(async (req, res) => {
 exports.financialReport = asyncHandler(async (req, res) => {
   const { period = 'month', from, to } = req.query;
   const { start, end } = dateRange(period, from, to);
-  const match = { status: 'COMPLETED', ...(start && { createdAt: { $gte: start } }), ...(end && { createdAt: { $lte: end } }) };
+  const match = { status: { $ne: 'CANCELLED' }, ...(start && { createdAt: { $gte: start } }), ...(end && { createdAt: { $lte: end } }) };
+  const payMatch = { status: 'PAID', ...(start && { date: { $gte: start } }), ...(end && { date: { $lte: end } }) };
   const expenseMatch = { ...(start && { date: { $gte: start } }), ...(end && { date: { $lte: end } }) };
 
-  const [agg, stockInCost, totalExpenses, expensesByCategory, purchasesAgg] = await Promise.all([
+  const [agg, payAgg, stockInCost, totalExpenses, expensesByCategory, purchasesAgg] = await Promise.all([
     Sale.aggregate([
       { $match: match },
-      { $group: { _id: null, sales: { $sum: '$total' }, paid: { $sum: '$amountPaid' }, discount: { $sum: '$discount' }, cost: { $sum: { $reduce: { input: '$items', initialValue: 0, in: { $add: ['$$value', { $multiply: ['$$this.quantity', { $ifNull: ['$$this.cost', 0] }] }] } } } }, count: { $sum: 1 } } },
+      { $group: { _id: null, sales: { $sum: '$total' }, discount: { $sum: '$discount' }, cost: { $sum: { $reduce: { input: '$items', initialValue: 0, in: { $add: ['$$value', { $multiply: ['$$this.quantity', { $ifNull: ['$$this.cost', 0] }] }] } } } }, count: { $sum: 1 } } },
     ]),
+    Payment.aggregate([{ $match: payMatch }, { $group: { _id: null, paid: { $sum: '$amount' } } }]),
     StockTransaction.aggregate([{ $match: { type: 'STOCK_IN' } }, { $group: { _id: null, qty: { $sum: '$quantity' } } }]),
     Expense.aggregate([{ $match: expenseMatch }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
     Expense.aggregate([
@@ -301,7 +348,8 @@ exports.financialReport = asyncHandler(async (req, res) => {
     ]),
   ]);
 
-  const t = agg || { sales: 0, paid: 0, discount: 0, cost: 0, count: 0 };
+  const t = agg[0] || { sales: 0, discount: 0, cost: 0, count: 0 };
+  const paid = payAgg[0]?.paid || 0;
   const grossProfit = t.sales - t.cost;
   const expenses = totalExpenses[0]?.total || 0;
   const netProfit = grossProfit - expenses;
@@ -309,7 +357,7 @@ exports.financialReport = asyncHandler(async (req, res) => {
 
   success(res, 'Financial report', {
     totals: {
-      sales: t.sales, paid: t.paid, credit: t.sales - t.paid, outstanding: t.sales - t.paid,
+      sales: t.sales, paid, credit: t.sales - paid, outstanding: Math.max(0, t.sales - paid),
       discounts: t.discount, cost: t.cost, count: t.count,
       grossProfit,
       totalExpenses: expenses,

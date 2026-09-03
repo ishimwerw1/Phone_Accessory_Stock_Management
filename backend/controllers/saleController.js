@@ -25,15 +25,51 @@ exports.getAll = asyncHandler(async (req, res) => {
     .sort('-createdAt')
     .skip((page - 1) * limit)
     .limit(Number(limit));
-  success(res, 'Sales', { sales, total, page: Number(page), limit: Number(limit) });
+  const saleIds = sales.map((s) => s._id);
+  const paidBySale = {};
+  if (saleIds.length > 0) {
+    const paymentAgg = await Payment.aggregate([
+      { $match: { sale: { $in: saleIds }, status: 'PAID' } },
+      { $group: { _id: '$sale', paid: { $sum: '$amount' } } },
+    ]);
+    paymentAgg.forEach((r) => { paidBySale[String(r._id)] = r.paid; });
+  }
+  const salesWithPaid = sales.map((s) => {
+    const paid = paidBySale[String(s._id)] || 0;
+    const outstanding = s.status === 'CANCELLED' ? 0 : Math.max(0, (s.total || 0) - paid);
+    const pStatus = outstanding <= 0 ? 'PAID' : paid > 0 ? 'PARTIALLY_PAID' : 'UNPAID';
+    const obj = s.toObject();
+    return {
+      ...obj,
+      amountPaid: paid,
+      outstanding,
+      paymentStatus: s.status === 'CANCELLED' ? 'CANCELLED' : pStatus,
+    };
+  });
+  success(res, 'Sales', { sales: salesWithPaid, total, page: Number(page), limit: Number(limit) });
 });
 
+const enrichSale = async (saleDoc) => {
+  const paidAgg = await Payment.aggregate([
+    { $match: { sale: saleDoc._id, status: 'PAID' } },
+    { $group: { _id: '$sale', paid: { $sum: '$amount' } } },
+  ]);
+  const paid = paidAgg[0]?.paid || 0;
+  const outstanding = saleDoc.status === 'CANCELLED' ? 0 : Math.max(0, (saleDoc.total || 0) - paid);
+  const pStatus = saleDoc.status === 'CANCELLED' ? 'CANCELLED'
+    : outstanding <= 0 ? 'PAID'
+    : paid > 0 ? 'PARTIALLY_PAID' : 'UNPAID';
+  const obj = saleDoc.toObject ? saleDoc.toObject() : saleDoc;
+  return { ...obj, amountPaid: paid, outstanding, paymentStatus: pStatus };
+};
+
 exports.getOne = asyncHandler(async (req, res) => {
-  const sale = await Sale.findById(req.params.id)
+  const saleDoc = await Sale.findById(req.params.id)
     .populate('customer', 'name phone email address')
     .populate('cashier', 'name');
-  if (!sale) return error(res, 'Sale not found', 404);
-  const loan = await Loan.findOne({ sale: sale._id });
+  if (!saleDoc) return error(res, 'Sale not found', 404);
+  const sale = await enrichSale(saleDoc);
+  const loan = await Loan.findOne({ sale: saleDoc._id });
   success(res, 'Sale', { sale, loan: loan || null });
 });
 
@@ -43,11 +79,12 @@ exports.cancel = asyncHandler(async (req, res) => {
 });
 
 exports.invoice = asyncHandler(async (req, res) => {
-  const sale = await Sale.findById(req.params.id)
+  const saleDoc = await Sale.findById(req.params.id)
     .populate('customer', 'name phone email address')
     .populate('cashier', 'name');
-  if (!sale) return error(res, 'Sale not found', 404);
-  const loan = await Loan.findOne({ sale: sale._id });
+  if (!saleDoc) return error(res, 'Sale not found', 404);
+  const sale = await enrichSale(saleDoc);
+  const loan = await Loan.findOne({ sale: saleDoc._id });
   const settings = require('../models/Setting');
   const s = {};
   for (const row of await settings.find()) s[row.key] = row.value;
