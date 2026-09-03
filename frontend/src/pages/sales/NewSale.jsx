@@ -107,6 +107,7 @@ export default function NewSale() {
       const { data } = await api.post('/sales', payload)
       setCompletedSale(data.data.sale)
       setConfirming(false)
+      window.dispatchEvent(new Event('stock-updated'))
     } catch (err) {
       setError(getError(err))
       setConfirming(false)

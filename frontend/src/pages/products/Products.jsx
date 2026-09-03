@@ -47,6 +47,17 @@ export default function Products() {
   useEffect(() => {
     api.get('/categories').then((r) => setCategories(r.data.data)).catch(() => {})
   }, [])
+  useEffect(() => {
+    const refresh = () => load()
+    window.addEventListener('focus', refresh)
+    window.addEventListener('stock-updated', refresh)
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh() })
+    return () => {
+      window.removeEventListener('focus', refresh)
+      window.removeEventListener('stock-updated', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+    }
+  }, [load])
 
   const sorted = useCallback((rows) => {
     if (!sort) return rows
