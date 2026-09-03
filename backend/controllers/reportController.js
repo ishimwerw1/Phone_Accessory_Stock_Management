@@ -236,22 +236,28 @@ exports.customerReport = asyncHandler(async (req, res) => {
   const customers = await Customer.find({ status: 'ACTIVE' }).sort('-createdAt').lean();
   const ids = customers.map((c) => c._id);
   const salesAgg = await Sale.aggregate([
-    { $match: { status: 'COMPLETED', customer: { $in: ids } } },
-    { $group: { _id: '$customer', total: { $sum: '$total' }, paid: { $sum: '$amountPaid' }, count: { $sum: 1 } } },
+    { $match: { status: { $ne: 'CANCELLED' }, customer: { $in: ids } } },
+    { $group: { _id: '$customer', total: { $sum: '$total' }, count: { $sum: 1 } } },
+  ]);
+  const paymentsAgg = await Payment.aggregate([
+    { $match: { customer: { $in: ids }, status: 'PAID' } },
+    { $group: { _id: '$customer', paid: { $sum: '$amount' } } },
   ]);
   const loanAgg = await Loan.aggregate([
     { $match: { status: { $ne: 'CANCELLED' }, customer: { $in: ids } } },
     { $group: { _id: '$customer', debt: { $sum: '$outstanding' } } },
   ]);
-  const map = {};
-  salesAgg.forEach((r) => { map[String(r._id)] = r; });
+  const saleMap = {};
+  salesAgg.forEach((r) => { saleMap[String(r._id)] = r; });
+  const payMap = {};
+  paymentsAgg.forEach((r) => { payMap[String(r._id)] = r; });
   const loanMap = {};
   loanAgg.forEach((r) => { loanMap[String(r._id)] = r; });
   const rows = customers.map((c) => ({
     _id: c._id, name: c.name, phone: c.phone,
-    total: map[String(c._id)]?.total || 0,
-    paid: map[String(c._id)]?.paid || 0,
-    count: map[String(c._id)]?.count || 0,
+    total: saleMap[String(c._id)]?.total || 0,
+    paid: payMap[String(c._id)]?.paid || 0,
+    count: saleMap[String(c._id)]?.count || 0,
     debt: loanMap[String(c._id)]?.debt || 0,
   }));
   rows.sort((a, b) => (b.total || 0) - (a.total || 0));

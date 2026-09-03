@@ -11,25 +11,38 @@ exports.getAll = asyncHandler(async (req, res) => {
   }
   const customers = await Customer.find(filter).sort('-createdAt').limit(500);
   const ids = customers.map((c) => c._id);
-  const [totals] = await Sale.aggregate([
-    { $match: { customer: { $in: ids }, status: 'COMPLETED' } },
-    { $group: { _id: '$customer', total: { $sum: '$total' }, paid: { $sum: '$amountPaid' } } },
+  const saleTotals = await Sale.aggregate([
+    { $match: { customer: { $in: ids }, status: { $ne: 'CANCELLED' } } },
+    { $group: { _id: '$customer', total: { $sum: '$total' } } },
   ]);
-  const byId = {};
-  if (totals) byId[String(totals._id)] = totals;
+  const saleById = {};
+  saleTotals.forEach((t) => { saleById[String(t._id)] = t; });
+  const paymentTotals = await Payment.aggregate([
+    { $match: { customer: { $in: ids }, status: 'PAID' } },
+    { $group: { _id: '$customer', paid: { $sum: '$amount' } } },
+  ]);
+  const paymentById = {};
+  paymentTotals.forEach((p) => { paymentById[String(p._id)] = p; });
   const loans = await Loan.aggregate([
     { $match: { customer: { $in: ids }, status: { $ne: 'CANCELLED' } } },
     { $group: { _id: '$customer', debt: { $sum: '$outstanding' }, count: { $sum: 1 } } },
   ]);
   const loanMap = {};
   loans.forEach((l) => { loanMap[String(l._id)] = l; });
-  success(res, 'Customers', customers.map((c) => ({
-    ...c.toObject(),
-    totalPurchases: byId[String(c._id)]?.total || 0,
-    totalPaid: byId[String(c._id)]?.paid || 0,
-    outstanding: loanMap[String(c._id)]?.debt || 0,
-    activeLoans: loanMap[String(c._id)]?.count || 0,
-  })));
+  success(res, 'Customers', customers.map((c) => {
+    const cid = String(c._id);
+    const purchases = saleById[cid]?.total || 0;
+    const paid = paymentById[cid]?.paid || 0;
+    const debt = loanMap[cid]?.debt || 0;
+    const outstanding = Math.max(purchases - paid, debt);
+    return {
+      ...c.toObject(),
+      totalPurchases: purchases,
+      totalPaid: paid,
+      outstanding,
+      activeLoans: loanMap[cid]?.count || 0,
+    };
+  }));
 });
 
 exports.getOne = asyncHandler(async (req, res) => {
@@ -42,8 +55,9 @@ exports.getOne = asyncHandler(async (req, res) => {
     .sort('-date');
   const repayments = await LoanPayment.find({ customer: customer._id }).sort('-date');
   const totalPurchase = sales.filter((s) => s.status !== 'CANCELLED').reduce((a, s) => a + s.total, 0);
-  const totalPaid = repayments.reduce((a, p) => a + p.amount, 0) + payments.filter((p) => p.sale).reduce((a, p) => a + p.amount, 0);
-  const outstanding = loans.reduce((a, l) => a + l.outstanding, 0);
+  const totalPaid = payments.filter((p) => p.status === 'PAID').reduce((a, p) => a + p.amount, 0);
+  const loanOutstanding = loans.reduce((a, l) => a + l.outstanding, 0);
+  const outstanding = Math.max(totalPurchase - totalPaid, loanOutstanding);
   success(res, 'Customer detail', {
     customer,
     stats: { totalPurchase, totalPaid, outstanding, salesCount: sales.filter((s) => s.status !== 'CANCELLED').length, loansCount: loans.length },
