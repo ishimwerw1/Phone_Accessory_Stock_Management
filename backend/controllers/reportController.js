@@ -21,7 +21,7 @@ exports.dashboard = asyncHandler(async (req, res) => {
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-  const [productStatsR, periodSalesR, salesTotalR, lowR, outR, topR, byMethodR, recent7R, loanTotalsR, recentTxnsR, custR, suppR, todayExpensesR, monthExpensesR, todayPurchasesR, supplierDebtsR, todayOrdersR, activeUsersR, purchasePaymentsR] = await Promise.all([
+  const [productStatsR, periodSalesR, salesTotalR, lowR, outR, topR, byMethodR, recent7R, loanTotalsR, recentTxnsR, custR, suppR, todayExpensesR, monthExpensesR, todayPurchasesR, supplierDebtsR, todayOrdersR, activeUsersR, purchasePaymentsR, monthSalesR] = await Promise.all([
     Product.aggregate([
       { $match: { status: 'ACTIVE' } },
       { $group: { _id: null, count: { $sum: 1 }, items: { $sum: '$quantity' }, value: { $sum: { $multiply: ['$quantity', '$sellingPrice'] } } } },
@@ -80,6 +80,11 @@ exports.dashboard = asyncHandler(async (req, res) => {
       const supplierTotal = supplierOut[0]?.total || 0;
       return [{ _id: null, total: purchaseTotal + supplierTotal }];
     }),
+    // Current-month sales: revenue, cash collected, and COGS for a consistent monthly profit
+    Sale.aggregate([
+      { $match: { status: { $ne: 'CANCELLED' }, createdAt: { $gte: new Date(now.getFullYear(), now.getMonth(), 1) } } },
+      { $group: { _id: null, total: { $sum: '$total' }, paid: { $sum: '$amountPaid' }, cost: { $sum: { $reduce: { input: '$items', initialValue: 0, in: { $add: ['$$value', { $multiply: ['$$this.quantity', { $ifNull: ['$$this.cost', 0] }] }] } } } } } },
+    ]),
   ]);
 
   const [productStats] = productStatsR;
@@ -95,10 +100,16 @@ exports.dashboard = asyncHandler(async (req, res) => {
 
   const totalSalesRevenue = salesTotal?.total || 0;
   const totalCostOfGoods = salesTotal?.cost || 0;
-  const grossProfit = totalSalesRevenue - totalCostOfGoods;
+  const grossProfitAllTime = totalSalesRevenue - totalCostOfGoods;
   const totalExpenses = monthExpensesR[0]?.total || 0;
   const totalPurchasePayments = purchasePaymentsR[0]?.total || 0;
-  const netProfit = grossProfit - totalExpenses - totalPurchasePayments;
+  const [monthSales] = monthSalesR || [];
+  const monthRevenue = monthSales?.total || 0;
+  const monthCost = monthSales?.cost || 0;
+  const monthPaid = monthSales?.paid || 0;
+  const monthGrossProfit = monthRevenue - monthCost;
+  const monthlyExpenses = totalExpenses;
+  const monthNetProfit = monthGrossProfit - monthlyExpenses;
 
   success(res, 'Dashboard', {
     totalProducts: productStats?.count || 0,
@@ -111,10 +122,14 @@ exports.dashboard = asyncHandler(async (req, res) => {
     totalSalesValue: totalSalesRevenue,
     totalPaid: salesTotal?.paid || 0,
     totalRevenueCost: totalCostOfGoods,
-    grossProfit,
-    totalExpenses,
-    totalPurchasePayments,
-    netProfit,
+    grossProfit: monthGrossProfit,
+    grossProfitAllTime: grossProfitAllTime,
+    netProfit: monthNetProfit,
+    netProfitMonth: monthNetProfit,
+    monthRevenue,
+    monthCost,
+    monthPaid,
+    monthlyExpenses,
     todayExpenses: todayExpensesR[0]?.total || 0,
     todayPurchases: todayPurchasesR[0]?.total || 0,
     todayPurchaseCount: todayPurchasesR[0]?.count || 0,

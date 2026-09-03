@@ -387,7 +387,7 @@ export default function Dashboard() {
                 </Col>
               </Row>
               <div className="small text-muted text-center mt-2">
-                Gross: {Number(data.grossProfit || 0).toLocaleString()} RWF · Expenses: {Number(data.totalExpenses || 0).toLocaleString()} RWF · Purchase Payouts: {Number(data.totalPurchasePayments || 0).toLocaleString()} RWF
+                This month · Revenue {Number(data.monthRevenue || 0).toLocaleString()} RWF − COGS {Number(data.monthCost || 0).toLocaleString()} RWF = Gross {Number(data.grossProfit || 0).toLocaleString()} RWF · Expenses {Number(data.monthlyExpenses || 0).toLocaleString()} RWF
               </div>
               <div className="d-flex gap-2 mt-3 justify-content-center">
                 <Button as={Link} to="/expenses" variant="outline-danger" size="sm"><i className="bi bi-wallet2 me-1" />Expenses</Button>

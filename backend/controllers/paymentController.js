@@ -39,6 +39,17 @@ exports.repayLoan = asyncHandler(async (req, res) => {
   loan.status = newOutstanding <= 0 ? 'PAID' : 'PARTIALLY_PAID';
   await loan.save();
 
+  if (loan.sale) {
+    const sale = await Sale.findById(loan.sale);
+    if (sale) {
+      const saleNewOutstanding = Math.max(0, (sale.outstanding || 0) - money);
+      sale.amountPaid = Math.min((sale.amountPaid || 0) + money, sale.total || 0);
+      sale.outstanding = saleNewOutstanding;
+      sale.paymentStatus = saleNewOutstanding <= 0 ? 'PAID' : 'PARTIALLY_PAID';
+      await sale.save();
+    }
+  }
+
   await LoanPayment.create({
     loan: loan._id,
     loanNumber: loan.loanNumber,
