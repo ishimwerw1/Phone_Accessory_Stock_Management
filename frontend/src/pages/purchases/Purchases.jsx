@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Card, Button, Modal, Form, Row, Col, Alert, Badge } from 'react-bootstrap'
+import { Card, Button, Modal, Form, Row, Col, Alert } from 'react-bootstrap'
 import api, { getError } from '../../api/client'
 import DataTable from '../../components/common/DataTable'
 import StatusBadge from '../../components/common/StatusBadge'
@@ -56,8 +56,8 @@ export default function Purchases() {
       ])
       const supData = sRes.data.data
       setSuppliers(Array.isArray(supData) ? supData : [])
-      const prodData = pRes.data.data
-      setProducts(Array.isArray(prodData) ? (prodData.products || prodData) : [])
+      const prodRes = pRes.data.data
+      setProducts(Array.isArray(prodRes) ? prodRes : (Array.isArray(prodRes?.products) ? prodRes.products : []))
     } catch {}
   }
 
@@ -80,6 +80,17 @@ export default function Purchases() {
   const updateItem = (idx, field, value) => {
     const items = [...form.items]
     items[idx] = { ...items[idx], [field]: value }
+    setForm({ ...form, items })
+  }
+
+  const selectProduct = (idx, productId) => {
+    const items = [...form.items]
+    const p = products.find((x) => x._id === productId)
+    items[idx] = {
+      ...items[idx],
+      product: productId,
+      costPrice: p ? p.buyingPrice : ''
+    }
     setForm({ ...form, items })
   }
 
@@ -254,30 +265,38 @@ export default function Purchases() {
               <Button size="sm" variant="outline-primary" onClick={addItem}><i className="bi bi-plus me-1" />Add Item</Button>
             </div>
 
-            {form.items.map((item, idx) => (
-              <Row key={idx} className="g-2 mb-2 align-items-end">
-                <Col md={5}>
-                  <Form.Select size="sm" value={item.product} onChange={(e) => updateItem(idx, 'product', e.target.value)} required>
-                    <option value="">Select Product</option>
-                    {products.map((p) => <option key={p._id} value={p._id}>{p.name} ({p.sku})</option>)}
-                  </Form.Select>
-                </Col>
-                <Col md={2}>
-                  <Form.Control size="sm" type="number" min="1" placeholder="Qty" value={item.quantity} onChange={(e) => updateItem(idx, 'quantity', e.target.value)} required />
-                </Col>
-                <Col md={3}>
-                  <Form.Control size="sm" type="number" min="0" placeholder="Cost Price" value={item.costPrice} onChange={(e) => updateItem(idx, 'costPrice', e.target.value)} required />
-                </Col>
-                <Col md={1}>
-                  <small className="text-muted">{item.quantity && item.costPrice ? formatMoney(Number(item.quantity) * Number(item.costPrice)) : ''}</small>
-                </Col>
-                <Col md={1}>
-                  {form.items.length > 1 && (
-                    <Button size="sm" variant="outline-danger" onClick={() => removeItem(idx)}><i className="bi bi-x" /></Button>
-                  )}
-                </Col>
-              </Row>
-            ))}
+            {form.items.map((item, idx) => {
+              const selected = products.find((p) => p._id === item.product)
+              return (
+                <Row key={idx} className="g-2 mb-2 align-items-end">
+                  <Col md={5}>
+                    <Form.Select size="sm" value={item.product} onChange={(e) => selectProduct(idx, e.target.value)} required>
+                      <option value="">Select Product</option>
+                      {products.map((p) => <option key={p._id} value={p._id}>{p.name} ({p.sku})</option>)}
+                    </Form.Select>
+                    {selected && (
+                      <small className="text-muted d-block mt-1">
+                        Buying: {formatMoney(selected.buyingPrice)} · Selling: {formatMoney(selected.sellingPrice)} · Qty: {selected.quantity} {selected.category?.name ? `· ${selected.category.name}` : ''}
+                      </small>
+                    )}
+                  </Col>
+                  <Col md={2}>
+                    <Form.Control size="sm" type="number" min="1" placeholder="Qty" value={item.quantity} onChange={(e) => updateItem(idx, 'quantity', e.target.value)} required />
+                  </Col>
+                  <Col md={3}>
+                    <Form.Control size="sm" type="number" min="0" placeholder="Cost Price" value={item.costPrice} onChange={(e) => updateItem(idx, 'costPrice', e.target.value)} required />
+                  </Col>
+                  <Col md={1}>
+                    <small className="text-muted">{item.quantity && item.costPrice ? formatMoney(Number(item.quantity) * Number(item.costPrice)) : ''}</small>
+                  </Col>
+                  <Col md={1}>
+                    {form.items.length > 1 && (
+                      <Button size="sm" variant="outline-danger" onClick={() => removeItem(idx)}><i className="bi bi-x" /></Button>
+                    )}
+                  </Col>
+                </Row>
+              )
+            })}
 
             <div className="text-end mt-2">
               <strong>Total: {formatMoney(totalAmount)}</strong>

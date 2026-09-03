@@ -1,4 +1,4 @@
-const { Product, Sale, Payment, Loan, LoanPayment, Customer, Supplier, StockTransaction, Category, Brand, PhoneModel, Expense, Purchase } = require('../models');
+const { Product, Sale, Payment, Loan, LoanPayment, Customer, Supplier, StockTransaction, Category, Brand, PhoneModel, Expense, Purchase, SupplierPayment, Order } = require('../models');
 const { success, asyncHandler } = require('../utils/response');
 
 const dateRange = (period, from, to) => {
@@ -21,7 +21,7 @@ exports.dashboard = asyncHandler(async (req, res) => {
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-  const [productStatsR, periodSalesR, salesTotalR, lowR, outR, topR, byMethodR, recent7R, loanTotalsR, recentTxnsR, custR, suppR, todayExpensesR, monthExpensesR, todayPurchasesR, supplierDebtsR, todayOrdersR, activeUsersR] = await Promise.all([
+  const [productStatsR, periodSalesR, salesTotalR, lowR, outR, topR, byMethodR, recent7R, loanTotalsR, recentTxnsR, custR, suppR, todayExpensesR, monthExpensesR, todayPurchasesR, supplierDebtsR, todayOrdersR, activeUsersR, purchasePaymentsR] = await Promise.all([
     Product.aggregate([
       { $match: { status: 'ACTIVE' } },
       { $group: { _id: null, count: { $sum: 1 }, items: { $sum: '$quantity' }, value: { $sum: { $multiply: ['$quantity', '$sellingPrice'] } } } },
@@ -68,6 +68,18 @@ exports.dashboard = asyncHandler(async (req, res) => {
     Order.countDocuments({ createdAt: { $gte: todayStart } }),
     // Active users (approximate)
     require('../models').User.countDocuments({ isActive: true }),
+    // Purchase payments made this month (cash out to suppliers for inventory)
+    // Includes initial downpayments on purchases created this month + supplier payments recorded this month
+    Purchase.aggregate([
+      { $match: { createdAt: { $gte: new Date(now.getFullYear(), now.getMonth(), 1) }, status: { $ne: 'CANCELLED' } } },
+      { $project: { outflow: '$amountPaid' } },
+      { $group: { _id: null, total: { $sum: '$outflow' } } },
+    ]).then(async (purchaseOut) => {
+      const supplierOut = await SupplierPayment.aggregate([{ $match: { date: { $gte: new Date(now.getFullYear(), now.getMonth(), 1) } } }, { $group: { _id: null, total: { $sum: '$amount' } } }]);
+      const purchaseTotal = purchaseOut[0]?.total || 0;
+      const supplierTotal = supplierOut[0]?.total || 0;
+      return [{ _id: null, total: purchaseTotal + supplierTotal }];
+    }),
   ]);
 
   const [productStats] = productStatsR;
@@ -85,7 +97,8 @@ exports.dashboard = asyncHandler(async (req, res) => {
   const totalCostOfGoods = salesTotal?.cost || 0;
   const grossProfit = totalSalesRevenue - totalCostOfGoods;
   const totalExpenses = monthExpensesR[0]?.total || 0;
-  const netProfit = grossProfit - totalExpenses;
+  const totalPurchasePayments = purchasePaymentsR[0]?.total || 0;
+  const netProfit = grossProfit - totalExpenses - totalPurchasePayments;
 
   success(res, 'Dashboard', {
     totalProducts: productStats?.count || 0,
@@ -100,6 +113,7 @@ exports.dashboard = asyncHandler(async (req, res) => {
     totalRevenueCost: totalCostOfGoods,
     grossProfit,
     totalExpenses,
+    totalPurchasePayments,
     netProfit,
     todayExpenses: todayExpensesR[0]?.total || 0,
     todayPurchases: todayPurchasesR[0]?.total || 0,
