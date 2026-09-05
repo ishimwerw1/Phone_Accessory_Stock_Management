@@ -1,10 +1,15 @@
 const { Sale, Payment, Loan } = require('../models');
 const { success, error, asyncHandler } = require('../utils/response');
-const { createSale, cancelSale } = require('../services/saleService');
+const { createSale, createOnDemandSale, cancelSale } = require('../services/saleService');
 
 exports.create = asyncHandler(async (req, res) => {
   const result = await createSale(req.body, req.user);
   success(res, 'Sale completed successfully', result, 201);
+});
+
+exports.createOnDemand = asyncHandler(async (req, res) => {
+  const result = await createOnDemandSale(req.body, req.user);
+  success(res, 'On-demand sale completed successfully', result, 201);
 });
 
 exports.getAll = asyncHandler(async (req, res) => {

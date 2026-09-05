@@ -20,8 +20,8 @@ export default function SaleDetail() {
 
   const load = () => {
     api.get(`/sales/invoice/${id}`).then((r) => {
-      const { sale, settings } = r.data.data
-      setSale(sale)
+      const { sale, loan, settings } = r.data.data
+      setSale({ ...sale, _loan: loan })
       const c = settings || {}
       setCompany({
         companyName: c.companyName || 'Phone Accessories Stock Management Ltd',
@@ -154,6 +154,17 @@ export default function SaleDetail() {
               <Alert variant="warning" className="py-2 small text-center fw-semibold mb-0">
                 PAYMENT METHOD: LOAN — OUTSTANDING BALANCE: {formatMoney(sale.outstanding)}
               </Alert>
+            )}
+            {sale._loan && (
+              <div className="mt-3 border rounded p-2 small">
+                <div className="fw-bold mb-1">Loan Details</div>
+                <div className="d-flex justify-content-between"><span className="text-muted">Loan ID</span><strong>{sale._loan.loanNumber || '-'}</strong></div>
+                <div className="d-flex justify-content-between"><span className="text-muted">Status</span><StatusBadge value={sale._loan.status} /></div>
+                <div className="d-flex justify-content-between"><span className="text-muted">Total Amount</span>{formatMoney(sale._loan.totalAmount)}</div>
+                <div className="d-flex justify-content-between"><span className="text-muted">Paid</span><span className="text-success">{formatMoney(sale._loan.amountPaid)}</span></div>
+                <div className="d-flex justify-content-between"><span className="text-muted">Remaining</span><strong className="text-danger">{formatMoney(sale._loan.outstanding)}</strong></div>
+                {sale._loan.dueDate && <div className="d-flex justify-content-between"><span className="text-muted">Due Date</span>{new Date(sale._loan.dueDate).toLocaleDateString()}</div>}
+              </div>
             )}
           </div>
         </div>

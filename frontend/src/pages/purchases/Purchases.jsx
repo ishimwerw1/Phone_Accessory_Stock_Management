@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Card, Button, Modal, Form, Row, Col, Alert } from 'react-bootstrap'
+import { Card, Button, Modal, Form, Row, Col, Alert, Badge } from 'react-bootstrap'
 import api, { getError } from '../../api/client'
 import DataTable from '../../components/common/DataTable'
 import StatusBadge from '../../components/common/StatusBadge'
@@ -27,6 +27,12 @@ export default function Purchases() {
   const [saving, setSaving] = useState(false)
   const [confirmDel, setConfirmDel] = useState(null)
   const [deleting, setDeleting] = useState(false)
+  const [typeFilter, setTypeFilter] = useState('ALL')
+  const [showNewSupplier, setShowNewSupplier] = useState(false)
+  const [newSupplierForm, setNewSupplierForm] = useState({ name: '', phone: '' })
+  const [showNewProduct, setShowNewProduct] = useState(false)
+  const [newProductForm, setNewProductForm] = useState({ name: '', buyingPrice: '', sellingPrice: '' })
+  const [quickSaving, setQuickSaving] = useState(false)
   const { hasPermission } = useAuth()
 
   const load = useCallback(async () => {
@@ -35,6 +41,7 @@ export default function Purchases() {
       const params = { page, limit: 20 }
       if (statusFilter !== 'ALL') params.status = statusFilter
       if (paymentFilter !== 'ALL') params.paymentStatus = paymentFilter
+      if (typeFilter !== 'ALL') params.type = typeFilter
       if (from) params.from = from
       if (to) params.to = to
       const { data } = await api.get('/purchases', { params })
@@ -44,7 +51,7 @@ export default function Purchases() {
     } finally {
       setLoading(false)
     }
-  }, [page, statusFilter, paymentFilter, from, to])
+  }, [page, statusFilter, paymentFilter, typeFilter, from, to])
 
   useEffect(() => { load() }, [load])
 
@@ -99,6 +106,44 @@ export default function Purchases() {
     const price = Number(item.costPrice) || 0
     return sum + qty * price
   }, 0)
+
+  const createSupplier = async () => {
+    if (!newSupplierForm.name.trim()) return setError('Supplier name is required')
+    setQuickSaving(true)
+    setError('')
+    try {
+      const { data } = await api.post('/suppliers', { name: newSupplierForm.name.trim(), phone: newSupplierForm.phone.trim() })
+      setForm((f) => ({ ...f, supplier: data.data._id }))
+      setSuppliers((prev) => [...prev, data.data])
+      setNewSupplierForm({ name: '', phone: '' })
+      setShowNewSupplier(false)
+    } catch (err) {
+      setError(getError(err))
+    } finally {
+      setQuickSaving(false)
+    }
+  }
+
+  const createProduct = async () => {
+    if (!newProductForm.name.trim()) return setError('Product name is required')
+    setQuickSaving(true)
+    setError('')
+    try {
+      const { data } = await api.post('/products', {
+        name: newProductForm.name.trim(),
+        buyingPrice: Number(newProductForm.buyingPrice || 0),
+        sellingPrice: Number(newProductForm.sellingPrice || 0),
+      })
+      setProducts((prev) => [...prev, data.data])
+      setForm((f) => ({ ...f, items: [{ ...f.items[0], product: data.data._id, costPrice: data.data.buyingPrice }] }))
+      setNewProductForm({ name: '', buyingPrice: '', sellingPrice: '' })
+      setShowNewProduct(false)
+    } catch (err) {
+      setError(getError(err))
+    } finally {
+      setQuickSaving(false)
+    }
+  }
 
   const submit = async (ev) => {
     ev.preventDefault()
@@ -173,6 +218,11 @@ export default function Purchases() {
             <option value="PARTIALLY_PAID">Partially Paid</option>
             <option value="UNPAID">Unpaid</option>
           </Form.Select>
+          <Form.Select size="sm" value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); setPage(1) }} style={{ maxWidth: 150 }}>
+            <option value="ALL">All Types</option>
+            <option value="NORMAL">Normal Stock</option>
+            <option value="ON_DEMAND">On-demand Sourcing</option>
+          </Form.Select>
           <Form.Control size="sm" type="date" value={from} onChange={(e) => { setFrom(e.target.value); setPage(1) }} style={{ maxWidth: 155 }} />
           <Form.Control size="sm" type="date" value={to} onChange={(e) => { setTo(e.target.value); setPage(1) }} style={{ maxWidth: 155 }} />
         </div>
@@ -185,6 +235,9 @@ export default function Purchases() {
               </button>
             )},
             { key: 'createdAt', label: 'Date', render: (p) => new Date(p.createdAt).toLocaleDateString() },
+            { key: 'type', label: 'Type', render: (p) => (
+              <Badge bg="" className={p.type === 'ON_DEMAND' ? 'badge-soft-warning' : 'badge-soft-secondary'}>{p.type === 'ON_DEMAND' ? 'On-demand' : 'Normal'}</Badge>
+            ) },
             { key: 'supplier', label: 'Supplier', render: (p) => (
               <span className="small">{p.supplier?.name || '-'}<br /><small className="text-muted">{p.supplier?.phone}</small></span>
             )},
@@ -227,6 +280,9 @@ export default function Purchases() {
                     {suppliers.map((s) => <option key={s._id} value={s._id}>{s.name} ({s.phone})</option>)}
                   </Form.Select>
                 </Form.Group>
+                <Button size="sm" variant="link" className="p-0 mt-1 text-decoration-none" onClick={() => setShowNewSupplier(true)}>
+                  <i className="bi bi-plus-lg me-1" />Add New Supplier
+                </Button>
               </Col>
               <Col md={3}>
                 <Form.Group>
@@ -262,7 +318,12 @@ export default function Purchases() {
             <hr />
             <div className="d-flex justify-content-between align-items-center mb-2">
               <strong className="small">Items</strong>
-              <Button size="sm" variant="outline-primary" onClick={addItem}><i className="bi bi-plus me-1" />Add Item</Button>
+              <div>
+                <Button size="sm" variant="outline-primary" onClick={() => setShowNewProduct(true)} className="me-2">
+                  <i className="bi bi-plus-lg me-1" />New Product
+                </Button>
+                <Button size="sm" variant="outline-primary" onClick={addItem}><i className="bi bi-plus me-1" />Add Item</Button>
+              </div>
             </div>
 
             {form.items.map((item, idx) => {
@@ -326,6 +387,7 @@ export default function Purchases() {
                     <div className="text-muted">Supplier</div>
                     <strong>{p.supplier?.name}</strong><br />
                     <small>{p.supplier?.phone}</small>
+                    <div className="mt-1"><Badge bg="" className={p.type === 'ON_DEMAND' ? 'badge-soft-warning' : 'badge-soft-secondary'}>{p.type === 'ON_DEMAND' ? 'On-demand Sourcing' : 'Normal Stock'}</Badge></div>
                   </Col>
                   <Col sm={3}>
                     <div className="text-muted">Payment</div>
@@ -390,6 +452,13 @@ export default function Purchases() {
                 )}
 
                 {p.notes && <div className="mt-3 small text-muted"><strong>Notes:</strong> {p.notes}</div>}
+
+                {detailData.sale && (
+                  <div className="mt-3 alert alert-warning py-2 small">
+                    <i className="bi bi-cart-check me-1" />
+                    On-demand sale for this sourcing: <strong>{detailData.sale.saleNumber}</strong> · Customer: {detailData.sale.customer?.name || '-'} · Total: {formatMoney(detailData.sale.total)}
+                  </div>
+                )}
               </>
             )
           })()}
@@ -406,6 +475,55 @@ export default function Purchases() {
         loading={deleting}
         onConfirm={doDelete}
       />
+
+      {/* Quick add supplier modal */}
+      <Modal show={showNewSupplier} onHide={() => !quickSaving && setShowNewSupplier(false)} centered>
+        <Modal.Header closeButton={!quickSaving}><Modal.Title className="fs-6 fw-bold"><i className="bi bi-truck me-2" />Add New Supplier</Modal.Title></Modal.Header>
+        <Modal.Body>
+          <Form.Group className="mb-2">
+            <Form.Label className="small fw-semibold">Name *</Form.Label>
+            <Form.Control autoFocus value={newSupplierForm.name} onChange={(e) => setNewSupplierForm({ ...newSupplierForm, name: e.target.value })} />
+          </Form.Group>
+          <Form.Group className="mb-0">
+            <Form.Label className="small fw-semibold">Phone</Form.Label>
+            <Form.Control value={newSupplierForm.phone} onChange={(e) => setNewSupplierForm({ ...newSupplierForm, phone: e.target.value })} />
+          </Form.Group>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="light" onClick={() => setShowNewSupplier(false)} disabled={quickSaving}>Cancel</Button>
+          <Button onClick={createSupplier} disabled={quickSaving}>{quickSaving ? 'Adding...' : 'Add Supplier'}</Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Quick add product modal */}
+      <Modal show={showNewProduct} onHide={() => !quickSaving && setShowNewProduct(false)} centered>
+        <Modal.Header closeButton={!quickSaving}><Modal.Title className="fs-6 fw-bold"><i className="bi bi-box-seam me-2" />Add New Product</Modal.Title></Modal.Header>
+        <Modal.Body>
+          <Form.Group className="mb-2">
+            <Form.Label className="small fw-semibold">Name *</Form.Label>
+            <Form.Control autoFocus value={newProductForm.name} onChange={(e) => setNewProductForm({ ...newProductForm, name: e.target.value })} />
+          </Form.Group>
+          <Row className="g-2">
+            <Col sm={6}>
+              <Form.Group>
+                <Form.Label className="small fw-semibold">Buying Price (RWF)</Form.Label>
+                <Form.Control type="number" min="0" value={newProductForm.buyingPrice} onChange={(e) => setNewProductForm({ ...newProductForm, buyingPrice: e.target.value })} />
+              </Form.Group>
+            </Col>
+            <Col sm={6}>
+              <Form.Group>
+                <Form.Label className="small fw-semibold">Selling Price (RWF)</Form.Label>
+                <Form.Control type="number" min="0" value={newProductForm.sellingPrice} onChange={(e) => setNewProductForm({ ...newProductForm, sellingPrice: e.target.value })} />
+              </Form.Group>
+            </Col>
+          </Row>
+          <p className="small text-muted mt-2 mb-0"><i className="bi bi-info-circle me-1" />A SKU is generated automatically.</p>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="light" onClick={() => setShowNewProduct(false)} disabled={quickSaving}>Cancel</Button>
+          <Button onClick={createProduct} disabled={quickSaving}>{quickSaving ? 'Adding...' : 'Add Product'}</Button>
+        </Modal.Footer>
+      </Modal>
     </div>
   )
 }

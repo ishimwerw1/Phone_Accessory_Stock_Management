@@ -56,23 +56,38 @@ exports.create = asyncHandler(async (req, res) => {
   const orderItems = [];
 
   for (const item of items) {
-    if (!item.product || !item.quantity || !item.price) {
-      return error(res, 'Each item must have product, quantity, and price');
+    if (!item.quantity || Number(item.quantity) <= 0) return error(res, 'Each item must have a valid quantity');
+    if (item.product) {
+      const product = await Product.findById(item.product);
+      if (!product) return error(res, `Product not found: ${item.product}`);
+
+      const subtotal = Number(item.quantity) * Number(item.price ?? product.sellingPrice);
+      total += subtotal;
+
+      orderItems.push({
+        product: product._id,
+        name: product.name,
+        sku: product.sku,
+        quantity: Number(item.quantity),
+        price: Number(item.price ?? product.sellingPrice),
+        subtotal,
+      });
+    } else {
+      if (!item.name) return error(res, 'Each item must reference a product or provide a product name');
+      const price = Number(item.price);
+      if (!isFinite(price) || price < 0) return error(res, 'Each item requires a valid price');
+
+      const subtotal = Number(item.quantity) * price;
+      total += subtotal;
+
+      orderItems.push({
+        name: item.name,
+        sku: item.sku || '',
+        quantity: Number(item.quantity),
+        price,
+        subtotal,
+      });
     }
-    const product = await Product.findById(item.product);
-    if (!product) return error(res, `Product not found: ${item.product}`);
-
-    const subtotal = Number(item.quantity) * Number(item.price);
-    total += subtotal;
-
-    orderItems.push({
-      product: product._id,
-      name: product.name,
-      sku: product.sku,
-      quantity: Number(item.quantity),
-      price: Number(item.price),
-      subtotal,
-    });
   }
 
   let customer = null;
@@ -106,34 +121,61 @@ exports.create = asyncHandler(async (req, res) => {
 exports.fulfill = asyncHandler(async (req, res) => {
   const order = await Order.findById(req.params.id);
   if (!order) return error(res, 'Order not found', 404);
-  if (order.status !== 'PENDING' && order.status !== 'CONFIRMED') return error(res, 'Only pending/confirmed orders can be fulfilled');
+  if (order.status !== 'PENDING' && order.status !== 'PROCESSING' && order.status !== 'CONFIRMED') return error(res, 'Only pending/processing orders can be converted to sale');
 
-  const { paymentMethod, amountPaid, paymentReference } = req.body;
+  const { paymentMethod, amountPaid, paymentReference, items: lineItems } = req.body;
 
-  // Check stock availability
-  for (const item of order.items) {
-    const product = await Product.findById(item.product);
-    if (!product) return error(res, `Product ${item.name} not found`);
-    if (product.quantity < item.quantity) {
-      return error(res, `Insufficient stock for ${item.name}. Available: ${product.quantity}, Required: ${item.quantity}`);
+  const overrides = {};
+  if (Array.isArray(lineItems)) {
+    for (const li of lineItems) {
+      if (!li.product) continue;
+      overrides[String(li.product)] = {
+        price: li.price !== undefined ? Number(li.price) : undefined,
+        quantity: li.quantity !== undefined ? Number(li.quantity) : undefined,
+      };
     }
   }
 
+  // Check stock availability based on final quantities
+  const saleItems = [];
+  let subtotal = 0;
+  for (const item of order.items) {
+    const ov = item.product ? overrides[String(item.product)] : null;
+    const quantity = ov?.quantity || item.quantity;
+    const price = ov?.price !== undefined ? ov.price : item.price;
+    const lineSubtotal = quantity * price;
+    if (ov?.quantity !== undefined) {
+      item.quantity = quantity;
+      item.subtotal = lineSubtotal;
+      item.price = price;
+    }
+    subtotal += lineSubtotal;
+
+    if (item.product) {
+      const product = await Product.findById(item.product);
+      if (!product) return error(res, `Product ${item.name} not found`);
+      if (product.quantity < quantity) {
+        return error(res, `Insufficient stock for ${item.name}. Available: ${product.quantity}, Required: ${quantity}`);
+      }
+    }
+    saleItems.push({
+      product: item.product || undefined,
+      name: item.name,
+      sku: item.sku,
+      quantity,
+      price,
+      subtotal: lineSubtotal,
+      cost: 0,
+    });
+  }
+  order.subtotal = subtotal;
+  order.total = subtotal - (order.discount || 0);
+
   // Create the sale
   const saleNumber = await nextNumber('SAL');
-  const paidAmount = amountPaid !== undefined ? Number(amountPaid) : order.total;
+  const paidAmount = Math.min(amountPaid !== undefined ? Number(amountPaid) : order.total, order.total);
   const method = paymentMethod || 'CASH';
   const outstanding = order.total - paidAmount;
-
-  const saleItems = order.items.map((item) => ({
-    product: item.product,
-    name: item.name,
-    sku: item.sku,
-    quantity: item.quantity,
-    price: item.price,
-    subtotal: item.subtotal,
-    cost: 0,
-  }));
 
   const sale = await Sale.create({
     saleNumber,
@@ -141,7 +183,7 @@ exports.fulfill = asyncHandler(async (req, res) => {
     customerName: order.customerName,
     cashier: req.user._id,
     items: saleItems,
-    subtotal: order.subtotal,
+    subtotal,
     discount: order.discount,
     total: order.total,
     paymentMethod: method,
@@ -152,8 +194,9 @@ exports.fulfill = asyncHandler(async (req, res) => {
     status: 'COMPLETED',
   });
 
-  // Update stock
-  for (const item of order.items) {
+  // Update stock for product-linked items
+  for (const item of saleItems) {
+    if (!item.product) continue;
     const product = await Product.findById(item.product);
     const prevQty = product.quantity;
     product.quantity -= item.quantity;
@@ -226,4 +269,17 @@ exports.cancel = asyncHandler(async (req, res) => {
 
   await audit(req, 'ORDER_CANCELLED', 'Order', order._id, { orderNumber: order.orderNumber });
   success(res, 'Order cancelled');
+});
+
+exports.updateStatus = asyncHandler(async (req, res) => {
+  const { status } = req.body;
+  const valid = ['PENDING', 'PROCESSING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'];
+  if (!valid.includes(status)) return error(res, 'Invalid order status');
+  const order = await Order.findById(req.params.id);
+  if (!order) return error(res, 'Order not found', 404);
+  if (order.status === 'CANCELLED') return error(res, 'Cannot update a cancelled order');
+  order.status = status;
+  await order.save();
+  await audit(req, 'ORDER_STATUS_CHANGED', 'Order', order._id, { orderNumber: order.orderNumber, status });
+  success(res, 'Order status updated', order);
 });

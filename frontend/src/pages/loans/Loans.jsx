@@ -47,10 +47,10 @@ export default function Loans() {
 
       {stats && (
         <Row className="g-3 mb-4">
-          <Col xl={3} md={6}><StatCard icon="bi-cash-coin" label="Total Outstanding Debt" value={formatMoney(stats.totalOutstanding)} color="danger" sub={`${stats.active + stats.overdue} open loans`} /></Col>
-          <Col xl={3} md={6}><StatCard icon="bi-alarm" label="Overdue Loans" value={formatMoney(stats.overdueAmount)} color="warning" sub={`${stats.overdue} loan(s) past due`} /></Col>
-          <Col xl={3} md={6}><StatCard icon="bi-arrow-up-right-circle" label="Total Credit Given" value={formatMoney(stats.totalCredit)} color="primary" sub={`${stats.totalLoans} loans total`} /></Col>
-          <Col xl={3} md={6}><StatCard icon="bi-check-circle" label="Total Repaid" value={formatMoney(stats.totalRepaid)} color="success" sub={`${stats.paid} fully paid · ${stats.partial} partial`} /></Col>
+          <Col xl={3} md={6}><StatCard icon="bi-clipboard-data" label="Total Loans" value={formatMoney(stats.totalCredit)} color="primary" sub={`${stats.totalLoans} loans total`} /></Col>
+          <Col xl={3} md={6}><StatCard icon="bi-cash-coin" label="Amount Loaned" value={formatMoney(stats.totalCredit)} color="info" sub={`of which ${stats.active + stats.overdue} still open`} /></Col>
+          <Col xl={3} md={6}><StatCard icon="bi-check-circle" label="Amount Paid" value={formatMoney(stats.totalRepaid)} color="success" sub={`${stats.paid} fully paid · ${stats.partial} partial`} /></Col>
+          <Col xl={3} md={6}><StatCard icon="bi-exclamation-triangle" label="Remaining Debt" value={formatMoney(stats.totalOutstanding)} color="danger" sub={`${stats.active + stats.overdue} open loans`} /></Col>
         </Row>
       )}
 

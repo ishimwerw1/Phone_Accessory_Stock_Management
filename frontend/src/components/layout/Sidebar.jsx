@@ -46,6 +46,7 @@ export default function Sidebar({ open, onClose }) {
           <>
             <GroupLabel>{t('sales')}</GroupLabel>
             {hasPermission('sales.create') && <Item to="/sales/new" icon="bi-cart-plus" labelKey="newSale" />}
+            {hasPermission('sales.create') && <Item to="/sales/on-demand" icon="bi-cart-check" labelKey="onDemandSale" />}
             {hasPermission('sales.read') && <Item to="/sales" icon="bi-receipt" labelKey="sales" />}
           </>
         )}

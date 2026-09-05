@@ -11,7 +11,16 @@ exports.getAll = asyncHandler(async (req, res) => {
 
   const skip = (Number(page) - 1) * Number(limit);
   const [payments, total] = await Promise.all([
-    SupplierPayment.find(filter).populate('purchase', 'purchaseNumber').populate('supplier', 'name').populate('receivedBy', 'name').sort('-date').skip(skip).limit(Number(limit)),
+    SupplierPayment.find(filter)
+      .populate('purchase', 'purchaseNumber type sale')
+      .populate({
+        path: 'purchase.sale',
+        select: 'saleNumber total paymentMethod createdBy',
+        populate: { path: 'customer', select: 'name phone' },
+      })
+      .populate('supplier', 'name')
+      .populate('receivedBy', 'name')
+      .sort('-date').skip(skip).limit(Number(limit)),
     SupplierPayment.countDocuments(filter),
   ]);
 

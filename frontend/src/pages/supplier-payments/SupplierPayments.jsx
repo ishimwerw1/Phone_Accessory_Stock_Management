@@ -84,7 +84,16 @@ export default function SupplierPayments() {
           columns={[
             { key: 'paymentNumber', label: 'Receipt #', render: (p) => <strong>{p.paymentNumber}</strong> },
             { key: 'date', label: 'Date', render: (p) => new Date(p.date || p.createdAt).toLocaleString() },
-            { key: 'purchase', label: 'Purchase', render: (p) => <span className="small">{p.purchase?.purchaseNumber || p.purchaseNumber || '-'}</span> },
+            { key: 'purchase', label: 'Purchase', render: (p) => (
+              <span className="small">
+                {p.purchase?.purchaseNumber || p.purchaseNumber || '-'}
+                {p.purchase?.type === 'ON_DEMAND' && <span className="text-muted"> (on-demand)</span>}
+              </span>
+            ) },
+            { key: 'sale', label: 'Related Sale', render: (p) => {
+              const s = p.purchase?.sale
+              return s ? <span className="small text-primary">{s.saleNumber}<br /><small className="text-muted">{s.customer?.name || '-'} · {formatMoney(s.total)}</small></span> : '-'
+            } },
             { key: 'supplier', label: 'Supplier', render: (p) => <span className="small">{p.supplier?.name || p.supplierName || '-'}</span> },
             { key: 'amount', label: 'Amount', render: (p) => <strong className="text-success">{formatMoney(p.amount)}</strong> },
             { key: 'previousRemaining', label: 'Was Owing', render: (p) => formatMoney(p.previousRemaining) },

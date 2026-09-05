@@ -12,7 +12,7 @@ const orderItemSchema = new mongoose.Schema(
   { _id: true }
 );
 
-const ORDER_STATUSES = ['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'];
+const ORDER_STATUSES = ['PENDING', 'PROCESSING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'];
 
 const orderSchema = new mongoose.Schema(
   {

@@ -24,6 +24,10 @@ export default function NewSale() {
   const [confirming, setConfirming] = useState(false)
   const [saving, setSaving] = useState(false)
   const [completedSale, setCompletedSale] = useState(null)
+  const [outOfStockProduct, setOutOfStockProduct] = useState(null)
+  const [showAddProduct, setShowAddProduct] = useState(false)
+  const [addingProduct, setAddingProduct] = useState(false)
+  const [newProduct, setNewProduct] = useState({ name: '', sellingPrice: '', buyingPrice: '' })
   const searchTimer = useRef(null)
 
   useEffect(() => {
@@ -80,10 +84,55 @@ export default function NewSale() {
     setCart((prev) => prev.map((i) => {
       if (i.productId !== productId) return i
       const q = Math.max(0, Number(qty) || 0)
-      if (q > i.available) setError(`Insufficient stock for "${i.productName}". Available: ${i.available}`)
+      const cap = Number.isFinite(i.available) ? i.available : Infinity
+      if (q > cap) setError(`Insufficient stock for "${i.productName}". Available: ${i.available}`)
       else setError('')
-      return { ...i, quantity: Math.min(q, i.available) }
+      return { ...i, quantity: Math.min(q, cap) }
     }))
+  }
+
+  const updatePrice = (productId, price) => {
+    setCart((prev) => prev.map((i) => i.productId === productId ? { ...i, price: Math.max(0, Number(price) || 0) } : i))
+  }
+
+  const handleProductClick = (p) => {
+    if (p.quantity > 0) addToCart(p)
+    else setOutOfStockProduct(p)
+  }
+
+  const addOutOfStock = () => {
+    setCart((prev) => [...prev, {
+      productId: outOfStockProduct._id,
+      productName: outOfStockProduct.name,
+      sku: outOfStockProduct.sku,
+      quantity: 1,
+      price: outOfStockProduct.sellingPrice,
+      discount: 0,
+      available: Infinity,
+    }])
+    setOutOfStockProduct(null)
+  }
+
+  const createProduct = async () => {
+    if (!newProduct.name.trim()) return setError('Product name is required')
+    setAddingProduct(true)
+    setError('')
+    try {
+      const { data } = await api.post('/products', {
+        name: newProduct.name.trim(),
+        sellingPrice: Number(newProduct.sellingPrice || 0),
+        buyingPrice: Number(newProduct.buyingPrice || 0),
+      })
+      const created = data.data
+      addToCart(created)
+      setNewProduct({ name: '', sellingPrice: '', buyingPrice: '' })
+      setShowAddProduct(false)
+      api.get('/products', { params: { limit: 200, status: 'ACTIVE' } }).then((r) => setProducts(r.data.data.products)).catch(() => {})
+    } catch (err) {
+      setError(getError(err))
+    } finally {
+      setAddingProduct(false)
+    }
   }
 
   const submitSale = async () => {
@@ -121,6 +170,7 @@ export default function NewSale() {
     setCart([]); setDiscount(0); setPaymentMethod('CASH'); setAmountPaidInput('')
     setPaymentReference(''); setDueDate(''); setNotes(''); setCustomer(null)
     setNewCustomer({ name: '', phone: '' }); setCustomerQuery(''); setError('')
+    setOutOfStockProduct(null); setNewProduct({ name: '', sellingPrice: '', buyingPrice: '' })
   }
 
   /* ---------- Success screen ---------- */
@@ -207,7 +257,12 @@ export default function NewSale() {
           </Card>
 
           <Card body>
-            <Form.Label className="small fw-semibold">2. Products</Form.Label>
+            <div className="d-flex justify-content-between align-items-center mb-3">
+              <Form.Label className="small fw-semibold mb-0">2. Products</Form.Label>
+              <Button size="sm" variant="outline-primary" onClick={() => setShowAddProduct(true)}>
+                <i className="bi bi-plus-lg me-1" />Add Product
+              </Button>
+            </div>
             <InputGroup className="mb-3">
               <InputGroup.Text><i className="bi bi-search" /></InputGroup.Text>
               <Form.Control placeholder="Search by name, SKU or scan barcode..." value={productSearch} onChange={(e) => setProductSearch(e.target.value)} autoFocus />
@@ -216,7 +271,7 @@ export default function NewSale() {
             <Row className="g-2" xs={2} md={3}>
               {filteredProducts.map((p) => (
                 <Col key={p._id}>
-                  <Card className={`pos-product-card ${p.quantity <= 0 ? 'opacity-50' : ''}`} onClick={() => p.quantity > 0 && addToCart(p)}>
+                  <Card className={`pos-product-card ${p.quantity <= 0 ? 'opacity-50' : ''}`} onClick={() => handleProductClick(p)}>
                     <Card.Body className="p-2">
                       <div className="d-flex gap-2 align-items-center">
                         {p.image
@@ -230,7 +285,7 @@ export default function NewSale() {
                       <div className="d-flex justify-content-between align-items-center mt-2">
                         <strong className="small">{formatMoney(p.sellingPrice)}</strong>
                         <Badge bg="" className={p.quantity === 0 ? 'badge-soft-danger' : p.quantity <= p.minStock ? 'badge-soft-warning' : 'badge-soft-success'}>
-                          {p.quantity}
+                          {p.quantity === 0 ? 'Out of stock' : `${p.quantity} in stock`}
                         </Badge>
                       </div>
                     </Card.Body>
@@ -257,7 +312,7 @@ export default function NewSale() {
                   <div className="d-flex justify-content-between align-items-start">
                     <div className="min-w-0 pe-2">
                       <div className="small fw-semibold text-truncate-2">{item.productName}</div>
-                      <div className="text-muted" style={{ fontSize: '0.72rem' }}>{formatMoney(item.price)} × {item.quantity} = {formatMoney(item.quantity * item.price)}</div>
+                      <div className="text-muted" style={{ fontSize: '0.72rem' }}>{item.sku}</div>
                     </div>
                     <button className="btn btn-sm btn-link text-danger p-0" onClick={() => setCart(cart.filter((i) => i.productId !== item.productId))}>
                       <i className="bi bi-x-lg small" />
@@ -265,9 +320,16 @@ export default function NewSale() {
                   </div>
                   <div className="d-flex align-items-center gap-2 mt-1">
                     <Button size="sm" variant="light" className="border py-0 px-2" onClick={() => updateQty(item.productId, item.quantity - 1)}>−</Button>
-                    <Form.Control size="sm" type="number" min="1" max={item.available} value={item.quantity} onChange={(e) => updateQty(item.productId, e.target.value)} style={{ width: 70 }} />
-                    <Button size="sm" variant="light" className="border py-0 px-2" onClick={() => updateQty(item.productId, item.quantity + 1)} disabled={item.quantity >= item.available}>+</Button>
-                    <small className="text-muted ms-auto">{item.available} in stock</small>
+                    <Form.Control size="sm" type="number" min="1" value={item.quantity} onChange={(e) => updateQty(item.productId, e.target.value)} style={{ width: 70 }} />
+                    <Button size="sm" variant="light" className="border py-0 px-2" onClick={() => updateQty(item.productId, item.quantity + 1)} disabled={Number.isFinite(item.available) && item.quantity >= item.available}>+</Button>
+                    <InputGroup size="sm" className="ms-auto" style={{ maxWidth: 150 }}>
+                      <InputGroup.Text className="small">Price</InputGroup.Text>
+                      <Form.Control type="number" min="0" value={item.price} onChange={(e) => updatePrice(item.productId, e.target.value)} />
+                    </InputGroup>
+                  </div>
+                  <div className="d-flex justify-content-between text-muted mt-1" style={{ fontSize: '0.72rem' }}>
+                    <span>{Number.isFinite(item.available) ? `${item.available} in stock` : 'out of stock - special order'}</span>
+                    <span><strong className="text-dark">Line total: {formatMoney(item.quantity * item.price)}</strong></span>
                   </div>
                 </div>
               ))}
@@ -362,6 +424,51 @@ export default function NewSale() {
           <Button variant="light" onClick={() => setConfirming(false)} disabled={saving}>Cancel</Button>
           <Button onClick={submitSale} disabled={saving}>
             {saving ? <><span className="spinner-border spinner-border-sm me-1" />Processing...</> : <><i className="bi bi-check-lg me-1" />Confirm & Complete</>}
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Out of stock confirm modal */}
+      <Modal show={!!outOfStockProduct} onHide={() => setOutOfStockProduct(null)} centered>
+        <Modal.Header closeButton><Modal.Title className="fs-6 fw-bold"><i className="bi bi-exclamation-triangle me-2 text-warning" />Out of Stock</Modal.Title></Modal.Header>
+        <Modal.Body>
+          <p className="mb-1"><strong>{outOfStockProduct?.name}</strong> has <strong className="text-danger">0 in stock</strong>.</p>
+          <p className="small text-muted mb-0">You are about to sell a product that is not in stock. It will be treated as a special order. Continue?</p>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="light" onClick={() => setOutOfStockProduct(null)}>Cancel</Button>
+          <Button variant="warning" onClick={addOutOfStock}>Sell anyway</Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Quick add product modal */}
+      <Modal show={showAddProduct} onHide={() => !addingProduct && setShowAddProduct(false)} centered>
+        <Modal.Header closeButton={!addingProduct}><Modal.Title className="fs-6 fw-bold"><i className="bi bi-box-seam me-2" />Add New Product</Modal.Title></Modal.Header>
+        <Modal.Body>
+          <Form.Group className="mb-2">
+            <Form.Label className="small fw-semibold">Product Name *</Form.Label>
+            <Form.Control autoFocus value={newProduct.name} onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })} placeholder="e.g. Samsung S21 LCD" />
+          </Form.Group>
+          <Row className="g-2">
+            <Col sm={6}>
+              <Form.Group>
+                <Form.Label className="small fw-semibold">Selling Price (RWF) *</Form.Label>
+                <Form.Control type="number" min="0" value={newProduct.sellingPrice} onChange={(e) => setNewProduct({ ...newProduct, sellingPrice: e.target.value })} />
+              </Form.Group>
+            </Col>
+            <Col sm={6}>
+              <Form.Group>
+                <Form.Label className="small fw-semibold">Buying Price (RWF)</Form.Label>
+                <Form.Control type="number" min="0" value={newProduct.buyingPrice} onChange={(e) => setNewProduct({ ...newProduct, buyingPrice: e.target.value })} />
+              </Form.Group>
+            </Col>
+          </Row>
+          <p className="small text-muted mt-2 mb-0"><i className="bi bi-info-circle me-1" />A SKU is generated automatically. The product starts with 0 stock.</p>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="light" onClick={() => setShowAddProduct(false)} disabled={addingProduct}>Cancel</Button>
+          <Button onClick={createProduct} disabled={addingProduct}>
+            {addingProduct ? <><span className="spinner-border spinner-border-sm me-1" />Creating...</> : <><i className="bi bi-check-lg me-1" />Create & Add to Cart</>}
           </Button>
         </Modal.Footer>
       </Modal>

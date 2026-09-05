@@ -5,7 +5,7 @@ const { audit } = require('../services/auditService');
 const { nextNumber } = require('../utils/helpers');
 
 exports.getAll = asyncHandler(async (req, res) => {
-  const { search, supplier, paymentStatus, status, from, to, page = 1, limit = 20 } = req.query;
+  const { search, supplier, paymentStatus, status, type, from, to, page = 1, limit = 20 } = req.query;
   const filter = {};
 
   if (search) {
@@ -15,6 +15,7 @@ exports.getAll = asyncHandler(async (req, res) => {
   if (supplier) filter.supplier = supplier;
   if (paymentStatus) filter.paymentStatus = paymentStatus;
   if (status) filter.status = status;
+  if (type) filter.type = type;
   if (from || to) {
     filter.createdAt = {};
     if (from) filter.createdAt.$gte = new Date(from);
@@ -34,10 +35,12 @@ exports.getOne = asyncHandler(async (req, res) => {
   const purchase = await Purchase.findById(req.params.id)
     .populate('supplier', 'name phone email address')
     .populate('items.product', 'name sku')
+    .populate('sale', 'saleNumber total paymentMethod')
     .populate('createdBy', 'name');
   if (!purchase) return error(res, 'Purchase not found', 404);
   const payments = await SupplierPayment.find({ purchase: purchase._id }).populate('receivedBy', 'name').sort('-date');
-  success(res, 'Purchase', { purchase, payments });
+  const sale = purchase.sale ? await require('../models').Sale.findById(purchase.sale).populate('customer', 'name phone') : null;
+  success(res, 'Purchase', { purchase, payments, sale });
 });
 
 exports.create = asyncHandler(async (req, res) => {

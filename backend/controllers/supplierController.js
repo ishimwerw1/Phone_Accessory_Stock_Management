@@ -1,4 +1,4 @@
-const { Supplier, Product, StockTransaction, Sale } = require('../models');
+const { Supplier, Product, Purchase, Sale } = require('../models');
 const { success, error, asyncHandler } = require('../utils/response');
 const { audit } = require('../services/auditService');
 
@@ -20,17 +20,28 @@ exports.getOne = asyncHandler(async (req, res) => {
     .populate('category', 'name')
     .populate('brand', 'name')
     .sort('-createdAt');
-  const purchases = await StockTransaction.find({ type: 'STOCK_IN', product: { $in: products.map((p) => p._id) } })
-    .populate('product', 'name sku')
-    .populate('performedBy', 'name')
-    .sort('-date')
+  const purchases = await Purchase.find({ supplier: supplier._id })
+    .populate('sale', 'saleNumber total paymentMethod')
+    .sort('-createdAt')
     .limit(100);
-  const totalPurchases = purchases.reduce((s, p) => s + (p.quantity * (p.newQuantity >= p.prevQuantity ? 0 : 0)), 0);
-  const spent = await StockTransaction.aggregate([
-    { $match: { type: 'STOCK_IN', product: { $in: products.map((p) => p._id) } } },
-    { $group: { _id: null, qty: { $sum: '$quantity' } } },
+  const stats = await Purchase.aggregate([
+    { $match: { supplier: supplier._id } },
+    { $group: { _id: '$type', total: { $sum: '$totalAmount' }, remaining: { $sum: '$remainingAmount' }, count: { $sum: 1 } } },
   ]);
-  success(res, 'Supplier detail', { supplier, products, purchases, totalQuantity: spent[0]?.qty || 0, totalPurchases });
+  const agg = await Purchase.aggregate([
+    { $match: { supplier: supplier._id } },
+    { $group: { _id: null, total: { $sum: '$totalAmount' }, remaining: { $sum: '$remainingAmount' }, count: { $sum: 1 } } },
+  ]);
+  const total = agg[0] || { total: 0, remaining: 0, count: 0 };
+  success(res, 'Supplier detail', {
+    supplier,
+    products,
+    purchases,
+    stats,
+    totalPurchases: total.count || 0,
+    totalSpent: total.total || 0,
+    totalRemaining: total.remaining || 0,
+  });
 });
 
 exports.create = asyncHandler(async (req, res) => {

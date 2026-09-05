@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Card, Button, Modal, Form, Row, Col, Alert } from 'react-bootstrap'
+import { Card, Button, Modal, Form, Row, Col, Alert, Badge } from 'react-bootstrap'
 import api, { getError } from '../../api/client'
 import DataTable from '../../components/common/DataTable'
 import StatusBadge from '../../components/common/StatusBadge'
 import ConfirmDialog from '../../components/common/ConfirmDialog'
 import { useAuth } from '../../context/AuthContext'
+import { formatMoney } from '../../context/LanguageContext'
 
-const empty = { name: '', company: '', phone: '', email: '', address: '', status: 'ACTIVE' }
+const empty = { name: '', company: '', phone: '', email: '', address: '', notes: '', status: 'ACTIVE' }
 
 export default function Suppliers() {
   const [suppliers, setSuppliers] = useState([])
@@ -47,7 +48,7 @@ export default function Suppliers() {
   const openForm = (s) => {
     setError('')
     setEditing(s || null)
-    setForm(s ? { name: s.name, company: s.company || '', phone: s.phone, email: s.email || '', address: s.address || '', status: s.status || 'ACTIVE' } : empty)
+    setForm(s ? { name: s.name, company: s.company || '', phone: s.phone, email: s.email || '', address: s.address || '', notes: s.notes || '', status: s.status || 'ACTIVE' } : empty)
     setShowForm(true)
   }
 
@@ -166,6 +167,7 @@ export default function Suppliers() {
               <Col md={6}><Form.Group><Form.Label>Phone *</Form.Label><Form.Control value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} required /></Form.Group></Col>
               <Col md={6}><Form.Group><Form.Label>Email</Form.Label><Form.Control type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Form.Group></Col>
               <Col md={12}><Form.Group><Form.Label>Address</Form.Label><Form.Control value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></Form.Group></Col>
+              <Col md={12}><Form.Group><Form.Label>Notes</Form.Label><Form.Control as="textarea" rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Optional notes" /></Form.Group></Col>
               <Col md={6}>
                 <Form.Group>
                   <Form.Label>Status</Form.Label>
@@ -192,11 +194,17 @@ export default function Suppliers() {
         <Modal.Body>
           {detail && (
             <>
-              <div className="d-flex flex-wrap gap-4 small mb-3">
+              <div className="d-flex flex-wrap gap-4 small mb-2">
                 <span><i className="bi bi-telephone me-1 text-muted" /><code>{detail.supplier.phone}</code></span>
                 {detail.supplier.email && <span><i className="bi bi-envelope me-1 text-muted" />{detail.supplier.email}</span>}
                 {detail.supplier.address && <span><i className="bi bi-geo-alt me-1 text-muted" />{detail.supplier.address}</span>}
                 <StatusBadge value={detail.supplier.status} />
+              </div>
+
+              <div className="d-flex flex-wrap gap-3 small mb-3">
+                <span className="border rounded p-2 bg-light"><span className="text-muted">Total spent: </span><strong className="text-danger">{formatMoney(detail.totalSpent)}</strong></span>
+                <span className="border rounded p-2 bg-light"><span className="text-muted">Still owing: </span><strong className="text-danger">{formatMoney(detail.totalRemaining)}</strong></span>
+                <span className="border rounded p-2 bg-light"><span className="text-muted">Purchases: </span><strong>{detail.totalPurchases}</strong></span>
               </div>
 
               <strong className="small d-block mb-1">Products supplied ({detail.products.length})</strong>
@@ -207,19 +215,26 @@ export default function Suppliers() {
                 ))}
               </div>
 
-              <strong className="small d-block mb-1">Recent stock receipts</strong>
-              <div className="table-responsive" style={{ maxHeight: 260, overflowY: 'auto' }}>
+              <strong className="small d-block mb-1">Purchase history ({detail.purchases.length})</strong>
+              <div className="table-responsive" style={{ maxHeight: 280, overflowY: 'auto' }}>
                 <table className="table table-sm table-hover align-middle mb-0">
-                  <thead><tr><th>Date</th><th>Product</th><th>Qty In</th><th>Ref</th><th>By</th></tr></thead>
+                  <thead><tr><th>Purchase #</th><th>Date</th><th>Type</th><th>Items</th><th>Total</th><th>Owing</th><th>Payment</th>{detail.purchases.some((p) => p.sale) && <th>Sale</th>}</tr></thead>
                   <tbody>
-                    {detail.purchases.length === 0 && <tr><td colSpan={5} className="text-center text-muted py-3">No purchases recorded</td></tr>}
+                    {detail.purchases.length === 0 && <tr><td colSpan={8} className="text-center text-muted py-3">No purchases recorded</td></tr>}
                     {detail.purchases.map((p) => (
                       <tr key={p._id}>
-                        <td className="small">{new Date(p.date || p.createdAt).toLocaleDateString()}</td>
-                        <td className="small">{p.productName || p.product?.name}</td>
-                        <td className="fw-semibold text-success">+{p.quantity}</td>
-                        <td><code style={{ fontSize: '0.7rem' }}>{p.reference}</code></td>
-                        <td className="small">{p.performedBy?.name}</td>
+                        <td><code className="small">{p.purchaseNumber}</code></td>
+                        <td className="small">{new Date(p.createdAt).toLocaleDateString()}</td>
+                        <td>
+                          <Badge bg="" className={p.type === 'ON_DEMAND' ? 'badge-soft-warning' : 'badge-soft-secondary'}>
+                            {p.type === 'ON_DEMAND' ? 'On-demand' : 'Normal'}
+                          </Badge>
+                        </td>
+                        <td className="small">{p.items?.length || 0}</td>
+                        <td className="fw-semibold">{formatMoney(p.totalAmount)}</td>
+                        <td className={p.remainingAmount > 0 ? 'text-danger fw-semibold' : 'text-success'}>{formatMoney(p.remainingAmount)}</td>
+                        <td><StatusBadge value={p.paymentStatus} /></td>
+                        {p.sale && <td className="small">{p.sale?.saleNumber}</td>}
                       </tr>
                     ))}
                   </tbody>

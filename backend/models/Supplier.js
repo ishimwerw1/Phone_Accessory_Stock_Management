@@ -7,6 +7,7 @@ const supplierSchema = new mongoose.Schema(
     phone: String,
     email: String,
     address: String,
+    notes: String,
     status: { type: String, enum: ['ACTIVE', 'INACTIVE'], default: 'ACTIVE' },
   },
   { timestamps: true }

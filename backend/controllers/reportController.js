@@ -411,7 +411,7 @@ exports.purchaseReport = asyncHandler(async (req, res) => {
   const { start, end } = dateRange(period, from, to);
   const match = { status: { $ne: 'CANCELLED' }, ...(start && { createdAt: { $gte: start } }), ...(end && { createdAt: { $lte: end } }) };
 
-  const [totals, bySupplier, paymentsAgg, overdueAgg] = await Promise.all([
+  const [totals, bySupplier, paymentsAgg, overdueAgg, byType] = await Promise.all([
     Purchase.aggregate([
       { $match: match },
       { $group: { _id: null, total: { $sum: '$totalAmount' }, paid: { $sum: '$amountPaid' }, remaining: { $sum: '$remainingAmount' }, count: { $sum: 1 } } },
@@ -431,6 +431,10 @@ exports.purchaseReport = asyncHandler(async (req, res) => {
       { $match: { paymentStatus: { $ne: 'PAID' }, dueDate: { $lt: new Date() } } },
       { $group: { _id: null, total: { $sum: '$remainingAmount' }, count: { $sum: 1 } } },
     ]),
+    Purchase.aggregate([
+      { $match: match },
+      { $group: { _id: '$type', total: { $sum: '$totalAmount' }, paid: { $sum: '$amountPaid' }, remaining: { $sum: '$remainingAmount' }, count: { $sum: 1 } } },
+    ]),
   ]);
 
   success(res, 'Purchase report', {
@@ -438,6 +442,9 @@ exports.purchaseReport = asyncHandler(async (req, res) => {
     bySupplier,
     payments: paymentsAgg[0] || { total: 0, count: 0 },
     overdue: overdueAgg[0] || { total: 0, count: 0 },
+    byType: byType || [],
+    normal: (byType.find((t) => t._id === 'NORMAL') || { total: 0, count: 0 }),
+    onDemand: (byType.find((t) => t._id === 'ON_DEMAND') || { total: 0, count: 0 }),
   });
 });
 

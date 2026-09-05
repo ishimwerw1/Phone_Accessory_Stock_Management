@@ -33,11 +33,16 @@ export default function PurchaseReport() {
         </div>
       </div>
 
-      <Row className="g-3 mb-4">
-        <Col md={3}><StatCard icon="bi-bag" label="Total Purchases" value={formatMoney(t.total || 0)} color="primary" sub={`${t.count || 0} purchase(s)`} /></Col>
+      <Row className="g-3 mb-2">
+        <Col md={3}><StatCard icon="bi-bag" label="Normal Purchases" value={formatMoney(data.normal?.total || 0)} color="primary" sub={`${data.normal?.count || 0} purchase(s)`} /></Col>
+        <Col md={3}><StatCard icon="bi-cart-check" label="On-demand Sourcing" value={formatMoney(data.onDemand?.total || 0)} color="warning" sub={`${data.onDemand?.count || 0} purchase(s)`} /></Col>
         <Col md={3}><StatCard icon="bi-cash-stack" label="Total Paid" value={formatMoney(t.paid || 0)} color="success" /></Col>
         <Col md={3}><StatCard icon="bi-cash-coin" label="Outstanding" value={formatMoney(t.remaining || 0)} color="danger" /></Col>
-        <Col md={3}><StatCard icon="bi-credit-card" label="Payments Made" value={formatMoney(data.payments?.total || 0)} color="info" sub={`${data.payments?.count || 0} payment(s)`} /></Col>
+      </Row>
+
+      <Row className="g-3 mb-4">
+        <Col md={3}><StatCard icon="bi-bag-fill" label="Total Purchases (All)" value={formatMoney(t.total || 0)} color="info" sub={`${t.count || 0} purchase(s)`} /></Col>
+        <Col md={3}><StatCard icon="bi-credit-card" label="Payments Made" value={formatMoney(data.payments?.total || 0)} color="success" sub={`${data.payments?.count || 0} payment(s)`} /></Col>
       </Row>
 
       <Row className="g-3">
@@ -83,6 +88,7 @@ export default function PurchaseReport() {
             <ul className="small text-muted ps-3 mb-0">
               <li className="mb-1">Purchases automatically update stock quantities.</li>
               <li className="mb-1">Outstanding amounts track supplier debts.</li>
+              <li className="mb-1">On-demand sourcing purchases do NOT affect your stock.</li>
               <li>Use date filters to narrow the period.</li>
             </ul>
           </Card>

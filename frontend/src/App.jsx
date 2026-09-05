@@ -15,6 +15,7 @@ import StockAdjustments from './pages/stock/StockAdjustments'
 import LowStock from './pages/stock/LowStock'
 
 import NewSale from './pages/sales/NewSale'
+import OnDemandSale from './pages/sales/OnDemandSale'
 import Sales from './pages/sales/Sales'
 import SaleDetail from './pages/sales/SaleDetail'
 
@@ -70,6 +71,7 @@ export default function App() {
               <Route path="/stock/low" element={<Protected permission="products.read"><LowStock /></Protected>} />
 
               <Route path="/sales/new" element={<Protected permission="sales.create"><NewSale /></Protected>} />
+              <Route path="/sales/on-demand" element={<Protected permission="sales.create"><OnDemandSale /></Protected>} />
               <Route path="/sales" element={<Protected permission="sales.read"><Sales /></Protected>} />
               <Route path="/sales/:id" element={<Protected permission="sales.read"><SaleDetail /></Protected>} />
 

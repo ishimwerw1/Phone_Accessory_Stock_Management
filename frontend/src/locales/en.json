@@ -19,6 +19,7 @@
   "lowStock": "Low Stock",
   "sales": "Sales",
   "newSale": "New Sale (POS)",
+  "onDemandSale": "On-demand Sale",
   "orders": "Orders",
   "invoices": "Invoices",
   "customers": "Customers",
