@@ -121,6 +121,21 @@ exports.create = asyncHandler(async (req, res) => {
 const httpError = (message, status) => Object.assign(new Error(message), { status });
 
 async function fulfillOne(order, user, { method = 'CASH', paidAmount, reference }, overrides = {}) {
+  // Orders may be created with only a name/phone (no linked customer).
+  // Loans require a real customer, so resolve/recreate one up front.
+  if (!order.customer) {
+    let customer = null;
+    if (order.customerPhone) customer = await Customer.findOne({ phone: order.customerPhone });
+    if (!customer) {
+      customer = await Customer.create({
+        name: order.customerName || 'Walk-in Customer',
+        phone: order.customerPhone || 'N/A',
+      });
+    }
+    order.customer = customer._id;
+  }
+  const customerId = order.customer;
+
   const saleItems = [];
   let subtotal = 0;
   for (const item of order.items) {
@@ -162,7 +177,7 @@ async function fulfillOne(order, user, { method = 'CASH', paidAmount, reference 
 
   const sale = await Sale.create({
     saleNumber,
-    customer: order.customer,
+    customer: customerId,
     customerName: order.customerName,
     cashier: user._id,
     items: saleItems,
@@ -207,7 +222,7 @@ async function fulfillOne(order, user, { method = 'CASH', paidAmount, reference 
     await Payment.create({
       paymentNumber,
       sale: sale._id,
-      customer: order.customer,
+      customer: customerId,
       method,
       amount: paid,
       reference,
@@ -221,7 +236,7 @@ async function fulfillOne(order, user, { method = 'CASH', paidAmount, reference 
     const loanNumber = await nextNumber('LOAN');
     await Loan.create({
       loanNumber,
-      customer: order.customer,
+      customer: customerId,
       customerName: order.customerName,
       customerPhone: order.customerPhone,
       sale: sale._id,
