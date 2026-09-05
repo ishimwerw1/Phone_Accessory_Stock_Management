@@ -4,6 +4,7 @@ import api, { getError } from '../../api/client'
 
 const defaults = {
   companyName: '', companyPhone: '', companyEmail: '', companyAddress: '',
+  companyTin: '', logoUrl: '/logo.png',
   currency: 'RWF', loanDays: 30
 }
 
@@ -35,6 +36,8 @@ export default function SettingsPage() {
         companyPhone: form.companyPhone,
         companyEmail: form.companyEmail,
         companyAddress: form.companyAddress,
+        companyTin: form.companyTin,
+        logoUrl: form.logoUrl,
         currency: form.currency,
         loanDays: Number(form.loanDays) || 30,
       })
@@ -65,6 +68,8 @@ export default function SettingsPage() {
                 <Col md={4}><Form.Group><Form.Label>Phone</Form.Label><Form.Control value={form.companyPhone} onChange={set('companyPhone')} /></Form.Group></Col>
                 <Col md={4}><Form.Group><Form.Label>Email</Form.Label><Form.Control type="email" value={form.companyEmail} onChange={set('companyEmail')} /></Form.Group></Col>
                 <Col md={4}><Form.Group><Form.Label>Address</Form.Label><Form.Control value={form.companyAddress} onChange={set('companyAddress')} /></Form.Group></Col>
+                <Col md={6}><Form.Group><Form.Label>TIN Number</Form.Label><Form.Control value={form.companyTin} onChange={set('companyTin')} placeholder="e.g. 104205001" /></Form.Group></Col>
+                <Col md={6}><Form.Group><Form.Label>Logo URL</Form.Label><Form.Control value={form.logoUrl} onChange={set('logoUrl')} placeholder="/logo.png" /></Form.Group></Col>
               </Row>
 
               <h6 className="fw-semibold text-uppercase text-muted small mb-3">Business Rules</h6>

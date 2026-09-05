@@ -26,9 +26,10 @@ export default function SaleDetail() {
       setCompany({
         companyName: c.companyName || 'Phone Accessories Stock Management Ltd',
         slogan: c.slogan || '',
-        address: c.address || '',
-        phone: c.phone || '',
-        email: c.email || '',
+        address: c.companyAddress || c.address || 'Kigali, Rwanda',
+        phone: c.companyPhone || c.phone || '',
+        email: c.companyEmail || c.email || '',
+        tin: c.companyTin || '',
         logoUrl: c.logoUrl || '/logo.png',
         invoiceFooterNote: c.invoiceFooterNote || 'Thank you for your business!'
       })
@@ -84,6 +85,7 @@ export default function SaleDetail() {
               <small className="text-muted d-block">{company.slogan}</small>
               <small className="text-muted d-block"><i className="bi bi-geo-alt me-1" />{company.address}</small>
               <small className="text-muted d-block"><i className="bi bi-telephone me-1" />{company.phone} · {company.email}</small>
+              {company.tin && <small className="text-muted d-block"><i className="bi bi-file-earmark-text me-1" />TIN: {company.tin}</small>}
             </div>
           </div>
           <div className="text-end">

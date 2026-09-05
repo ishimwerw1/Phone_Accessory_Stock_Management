@@ -13,6 +13,7 @@ export default function LoanDetail() {
   const navigate = useNavigate()
   const { hasPermission } = useAuth()
   const [data, setData] = useState(null)
+  const [company, setCompany] = useState(null)
   const [showRepay, setShowRepay] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [showCancel, setShowCancel] = useState(false)
@@ -24,7 +25,22 @@ export default function LoanDetail() {
   const [saving, setSaving] = useState(false)
 
   const load = () => {
-    api.get(`/loans/${id}`).then((r) => setData(r.data.data)).catch(() => navigate('/loans'))
+    api.get(`/loans/${id}`).then((r) => {
+      setData(r.data.data)
+      api.get('/settings').then((s) => {
+        const c = s.data.data || {}
+        setCompany({
+          name: c.companyName || 'Phone Accessories Stock Management Ltd',
+          slogan: c.slogan || '',
+          phone: c.companyPhone || '',
+          email: c.companyEmail || '',
+          address: c.companyAddress || 'Kigali, Rwanda',
+          tin: c.companyTin || '',
+          logoUrl: c.logoUrl || '/logo.png',
+          footerNote: c.invoiceFooterNote || 'Thank you for your business!'
+        })
+      }).catch(() => {})
+    }).catch(() => navigate('/loans'))
   }
   useEffect(load, [id, navigate])
 
@@ -99,7 +115,8 @@ export default function LoanDetail() {
         <h4 className="fw-bold mb-0" style={{ color: '#0d3b66' }}>
           <i className="bi bi-cash-coin me-2" />{loan.loanNumber} <StatusBadge value={loan.status} />
         </h4>
-        <div className="d-flex gap-2">
+        <div className="d-flex gap-2 no-print">
+          <Button variant="primary" onClick={() => window.print()}><i className="bi bi-printer me-1" />Print</Button>
           <Button variant="light" className="border" onClick={() => navigate('/loans')}><i className="bi bi-arrow-left me-1" />Back</Button>
           {canRepay && !['PAID', 'CANCELLED'].includes(loan.status) && (
             <Button variant="success" onClick={startRepay}><i className="bi bi-cash-stack me-1" />Record Repayment</Button>
@@ -291,6 +308,113 @@ export default function LoanDetail() {
           <Button onClick={saveDueDate} disabled={saving || !newDueDate}>Save</Button>
         </Modal.Footer>
       </Modal>
+
+      {/* Printable loan document */}
+      <Card className="invoice-sheet shadow-sm mt-4">
+        <div className="d-flex justify-content-between align-items-start border-bottom pb-3 mb-3">
+          <div className="d-flex gap-3">
+            {company && <img src={company.logoUrl} alt="" style={{ width: 64 }} />}
+            <div>
+              <h5 className="fw-bold mb-0" style={{ color: '#0d3b66' }}>{company?.name}</h5>
+              {company?.slogan && <small className="text-muted d-block">{company.slogan}</small>}
+              <small className="text-muted d-block"><i className="bi bi-geo-alt me-1" />{company?.address}</small>
+              {company?.phone && <small className="text-muted d-block"><i className="bi bi-telephone me-1" />{company.phone}</small>}
+              {company?.email && <small className="text-muted d-block"><i className="bi bi-envelope me-1" />{company.email}</small>}
+              {company?.tin && <small className="text-muted d-block"><i className="bi bi-file-earmark-text me-1" />TIN: {company.tin}</small>}
+            </div>
+          </div>
+          <div className="text-end">
+            <h4 className="fw-bold mb-0">LOAN AGREEMENT</h4>
+            <div className="small"><strong>{loan.loanNumber}</strong></div>
+            <div className="small text-muted">{new Date(loan.date || loan.createdAt).toLocaleDateString()}</div>
+            <div className="mt-2"><StatusBadge value={loan.status} /></div>
+          </div>
+        </div>
+
+        <div className="row mb-4">
+          <div className="col-6">
+            <strong className="small text-uppercase text-muted d-block mb-1">Borrower</strong>
+            <div className="fw-semibold">{loan.customer?.name || loan.customerName}</div>
+            {loan.customerPhone && <div className="small text-muted">{loan.customerPhone}</div>}
+            {loan.customer?.phone && <div className="small text-muted">{loan.customer.phone}</div>}
+            {loan.customer?.address && <div className="small text-muted">{loan.customer.address}</div>}
+          </div>
+          <div className="col-6 text-end">
+            <div className="small"><span className="text-muted">Linked Sale:</span> <strong>{sale?.saleNumber || '-'}</strong></div>
+            {sale?.cashier?.name && <div className="small"><span className="text-muted">Cashier:</span> <strong>{sale.cashier.name}</strong></div>}
+            {sale?.paymentMethod && <div className="small"><span className="text-muted">Sale Payment:</span> <StatusBadge value={sale.paymentMethod} /></div>}
+            {sale?.reference && <div className="small"><span className="text-muted">Ref:</span> {sale.reference}</div>}
+          </div>
+        </div>
+
+        <strong className="small text-uppercase text-muted d-block mb-1">Products</strong>
+        <table className="table table-sm table-bordered">
+          <thead style={{ background: '#f8f9fb' }}>
+            <tr>
+              <th>#</th><th>Product</th>
+              <th className="text-center">Qty</th><th className="text-end">Unit Price</th>
+              <th className="text-end">Subtotal</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(!sale?.items || sale.items.length === 0) && (
+              <tr><td colSpan={5} className="text-center text-muted py-3">No product details available</td></tr>
+            )}
+            {(sale?.items || []).map((item, i) => (
+              <tr key={i}>
+                <td>{i + 1}</td>
+                <td>{item.name}{item.sku && <span className="text-muted small"> · {item.sku}</span>}</td>
+                <td className="text-center">{item.quantity}</td>
+                <td className="text-end">{formatMoney(item.price)}</td>
+                <td className="text-end fw-semibold">{formatMoney(item.subtotal)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <div className="row justify-content-end mb-4">
+          <div className="col-md-5">
+            <table className="table table-sm">
+              <tbody>
+                <tr><td>Loan Amount</td><td className="text-end">{formatMoney(loan.totalAmount)}</td></tr>
+                <tr><td>Amount Paid</td><td className="text-end text-success">{formatMoney(loan.amountPaid)}</td></tr>
+                <tr className="table-warning fs-6 fw-bold">
+                  <td>Outstanding Balance</td>
+                  <td className="text-end text-danger">{formatMoney(loan.outstanding)}</td>
+                </tr>
+                <tr><td>Due Date</td><td className="text-end">{loan.dueDate ? new Date(loan.dueDate).toLocaleDateString() : '-'}</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <strong className="small text-uppercase text-muted d-block mb-1">Repayment History</strong>
+        <table className="table table-sm table-bordered">
+          <thead style={{ background: '#f8f9fb' }}>
+            <tr><th>Date</th><th>Amount</th><th>Method</th><th>Received By</th></tr>
+          </thead>
+          <tbody>
+            {repayments.length === 0 && <tr><td colSpan={4} className="text-center text-muted py-3">No repayments yet</td></tr>}
+            {repayments.map((p) => (
+              <tr key={p._id}>
+                <td className="small">{new Date(p.date || p.createdAt).toLocaleString()}</td>
+                <td className="fw-semibold text-success">{formatMoney(p.amount)}</td>
+                <td><StatusBadge value={p.method} /></td>
+                <td className="small">{p.receivedBy?.name}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <div className="row mt-5 pt-4 border-top">
+          <div className="col-6 text-center"><div className="border-top pt-1 small">Borrower Signature</div></div>
+          <div className="col-6 text-center"><div className="border-top pt-1 small">Authorized Signature</div></div>
+        </div>
+
+        <div className="border-top mt-4 pt-3 text-center text-muted small">
+          {company?.footerNote}
+        </div>
+      </Card>
     </div>
   )
 }
