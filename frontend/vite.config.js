@@ -8,7 +8,7 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: 'prompt',
+      registerType: 'autoUpdate',
       includeAssets: ['logo.png', 'logo.svg', 'favicon.svg', 'icons.svg'],
       manifest: {
         name: 'Phone Accessories Stock Management',
