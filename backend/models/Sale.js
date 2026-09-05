@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { PAYMENT_METHODS, PAYMENT_STATUSES, SALE_STATUSES } = require('../utils/constants');
+const { PAYMENT_METHODS, PAYMENT_STATUSES, SALE_STATUSES, SALE_SOURCES } = require('../utils/constants');
 
 const saleItemSchema = new mongoose.Schema(
   {
@@ -30,6 +30,7 @@ const saleSchema = new mongoose.Schema(
     total: { type: Number, default: 0 },
     paymentMethod: { type: String, enum: PAYMENT_METHODS, default: 'CASH' },
     paymentStatus: { type: String, enum: PAYMENT_STATUSES, default: 'UNPAID' },
+    source: { type: String, enum: SALE_SOURCES, default: 'RETAIL', index: true },
     amountPaid: { type: Number, default: 0 },
     outstanding: { type: Number, default: 0 },
     reference: String,

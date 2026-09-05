@@ -260,6 +260,7 @@ const createOnDemandSale = async (payload, user) => {
       amountPaid: paid,
       outstanding,
       reference,
+      source: 'ON_DEMAND',
       notes: notes || `On-demand purchase — sourced from ${supplier.name}`,
     }], opt(session));
 

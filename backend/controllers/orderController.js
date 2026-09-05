@@ -118,25 +118,9 @@ exports.create = asyncHandler(async (req, res) => {
   success(res, 'Order created', order, 201);
 });
 
-exports.fulfill = asyncHandler(async (req, res) => {
-  const order = await Order.findById(req.params.id);
-  if (!order) return error(res, 'Order not found', 404);
-  if (order.status !== 'PENDING' && order.status !== 'PROCESSING' && order.status !== 'CONFIRMED') return error(res, 'Only pending/processing orders can be converted to sale');
+const httpError = (message, status) => Object.assign(new Error(message), { status });
 
-  const { paymentMethod, amountPaid, paymentReference, items: lineItems } = req.body;
-
-  const overrides = {};
-  if (Array.isArray(lineItems)) {
-    for (const li of lineItems) {
-      if (!li.product) continue;
-      overrides[String(li.product)] = {
-        price: li.price !== undefined ? Number(li.price) : undefined,
-        quantity: li.quantity !== undefined ? Number(li.quantity) : undefined,
-      };
-    }
-  }
-
-  // Check stock availability based on final quantities
+async function fulfillOne(order, user, { method = 'CASH', paidAmount, reference }, overrides = {}) {
   const saleItems = [];
   let subtotal = 0;
   for (const item of order.items) {
@@ -153,9 +137,9 @@ exports.fulfill = asyncHandler(async (req, res) => {
 
     if (item.product) {
       const product = await Product.findById(item.product);
-      if (!product) return error(res, `Product ${item.name} not found`);
+      if (!product) throw httpError(`Product ${item.name} not found`, 404);
       if (product.quantity < quantity) {
-        return error(res, `Insufficient stock for ${item.name}. Available: ${product.quantity}, Required: ${quantity}`);
+        throw httpError(`Insufficient stock for ${item.name}. Available: ${product.quantity}, Required: ${quantity}`, 400);
       }
     }
     saleItems.push({
@@ -173,24 +157,24 @@ exports.fulfill = asyncHandler(async (req, res) => {
 
   // Create the sale
   const saleNumber = await nextNumber('SAL');
-  const paidAmount = Math.min(amountPaid !== undefined ? Number(amountPaid) : order.total, order.total);
-  const method = paymentMethod || 'CASH';
-  const outstanding = order.total - paidAmount;
+  const paid = Math.min(paidAmount !== undefined ? Number(paidAmount) : order.total, order.total);
+  const outstanding = order.total - paid;
 
   const sale = await Sale.create({
     saleNumber,
     customer: order.customer,
     customerName: order.customerName,
-    cashier: req.user._id,
+    cashier: user._id,
     items: saleItems,
     subtotal,
     discount: order.discount,
     total: order.total,
     paymentMethod: method,
-    paymentStatus: outstanding <= 0 ? 'PAID' : paidAmount > 0 ? 'PARTIALLY_PAID' : 'UNPAID',
-    amountPaid: paidAmount,
+    paymentStatus: outstanding <= 0 ? 'PAID' : paid > 0 ? 'PARTIALLY_PAID' : 'UNPAID',
+    amountPaid: paid,
     outstanding: Math.max(0, outstanding),
-    reference: paymentReference,
+    reference,
+    source: 'ORDER',
     status: 'COMPLETED',
   });
 
@@ -213,26 +197,26 @@ exports.fulfill = asyncHandler(async (req, res) => {
       reason: `Order ${order.orderNumber} fulfilled`,
       reference: order.orderNumber,
       sale: sale._id,
-      performedBy: req.user._id,
+      performedBy: user._id,
     });
   }
 
   // Create payment record
-  if (paidAmount > 0) {
+  if (paid > 0) {
     const paymentNumber = await nextNumber('PAY');
     await Payment.create({
       paymentNumber,
       sale: sale._id,
       customer: order.customer,
       method,
-      amount: paidAmount,
-      reference: paymentReference,
+      amount: paid,
+      reference,
       status: 'PAID',
-      receivedBy: req.user._id,
+      receivedBy: user._id,
     });
   }
 
-  // Create loan if outstanding
+  // Create loan if outstanding (unpaid amount becomes debt owed to us)
   if (outstanding > 0) {
     const loanNumber = await nextNumber('LOAN');
     await Loan.create({
@@ -242,19 +226,105 @@ exports.fulfill = asyncHandler(async (req, res) => {
       customerPhone: order.customerPhone,
       sale: sale._id,
       totalAmount: order.total,
-      amountPaid: paidAmount,
+      amountPaid: paid,
       outstanding,
       status: 'ACTIVE',
-      createdBy: req.user._id,
+      createdBy: user._id,
     });
   }
 
   order.status = 'COMPLETED';
-  order.completedBy = req.user._id;
+  order.completedBy = user._id;
   await order.save();
 
-  await audit(req, 'ORDER_FULFILLED', 'Order', order._id, { orderNumber: order.orderNumber, saleNumber });
-  success(res, 'Order fulfilled', { sale, order });
+  return { sale, order };
+}
+
+exports.fulfill = asyncHandler(async (req, res) => {
+  const order = await Order.findById(req.params.id);
+  if (!order) return error(res, 'Order not found', 404);
+  if (order.status !== 'PENDING' && order.status !== 'PROCESSING' && order.status !== 'CONFIRMED') return error(res, 'Only pending/processing orders can be converted to sale');
+
+  const overrides = {};
+  if (Array.isArray(req.body.items)) {
+    for (const li of req.body.items) {
+      if (!li.product) continue;
+      overrides[String(li.product)] = {
+        price: li.price !== undefined ? Number(li.price) : undefined,
+        quantity: li.quantity !== undefined ? Number(li.quantity) : undefined,
+      };
+    }
+  }
+
+  try {
+    const { sale } = await fulfillOne(order, req.user, {
+      method: req.body.paymentMethod || 'CASH',
+      paidAmount: req.body.amountPaid,
+      reference: req.body.paymentReference,
+    }, overrides);
+    await audit(req, 'ORDER_FULFILLED', 'Order', order._id, { orderNumber: order.orderNumber, saleNumber: sale.saleNumber, amountPaid: sale.amountPaid, outstanding: sale.outstanding });
+    success(res, 'Order fulfilled', { sale, order });
+  } catch (err) {
+    return error(res, err.message, err.status || 400);
+  }
+});
+
+exports.bulkFulfill = asyncHandler(async (req, res) => {
+  const { ids, paymentMethod, amountPaid, paymentReference } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) return error(res, 'Select at least one order to process');
+  if (ids.length > 50) return error(res, 'Too many orders in one batch (max 50)');
+
+  const orders = await Order.find({ _id: { $in: ids } });
+  if (orders.length !== new Set(ids.map(String)).size) return error(res, 'One or more orders were not found');
+
+  const eligible = [];
+  for (const o of orders) {
+    if (o.status !== 'PENDING' && o.status !== 'PROCESSING' && o.status !== 'CONFIRMED') {
+      return error(res, `Order ${o.orderNumber} is already processed or cannot be converted (status: ${o.status})`);
+    }
+    eligible.push(o);
+  }
+
+  // Validate stock for the whole batch up front (all-or-nothing)
+  for (const o of eligible) {
+    for (const item of o.items) {
+      if (!item.product) continue;
+      const product = await Product.findById(item.product);
+      if (!product) return error(res, `Product ${item.name} not found (order ${o.orderNumber})`, 404);
+      if (product.quantity < item.quantity) {
+        return error(res, `Insufficient stock for ${item.name} (order ${o.orderNumber}). Available: ${product.quantity}, Required: ${item.quantity}`);
+      }
+    }
+  }
+
+  const method = paymentMethod || 'CASH';
+  const totalDue = eligible.reduce((s, o) => s + o.total, 0);
+  let remaining = amountPaid !== undefined ? Math.min(Number(amountPaid) || 0, totalDue) : totalDue;
+
+  const results = [];
+  const failures = [];
+  for (const o of eligible) {
+    const ticket = Math.min(remaining, o.total);
+    remaining -= ticket;
+    try {
+      const { sale } = await fulfillOne(o, req.user, { method, paidAmount: ticket, reference: paymentReference });
+      results.push({ orderId: o._id, orderNumber: o.orderNumber, saleId: sale._id, saleNumber: sale.saleNumber, total: sale.total, paid: sale.amountPaid, outstanding: sale.outstanding });
+    } catch (err) {
+      failures.push({ orderNumber: o.orderNumber, message: err.message });
+    }
+  }
+
+  await audit(req, 'ORDER_BULK_FULFILLED', 'Order', null, {
+    count: results.length,
+    failures,
+    sales: results.map((r) => r.saleNumber),
+    method,
+    paid: results.reduce((s, r) => s + r.paid, 0),
+    outstanding: results.reduce((s, r) => s + r.outstanding, 0),
+  });
+
+  if (failures.length) return error(res, `${failures.length} order(s) failed: ${failures.map((f) => `${f.orderNumber} (${f.message})`).join(', ')}`, 400);
+  success(res, `${results.length} orders converted to sales`, { sales: results, totalPaid: results.reduce((s, r) => s + r.paid, 0) });
 });
 
 exports.cancel = asyncHandler(async (req, res) => {

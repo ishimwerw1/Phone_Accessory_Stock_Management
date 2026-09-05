@@ -12,6 +12,15 @@ const PERIODS = [
 ]
 const PAGE_SIZE = 8
 
+const SOURCE_LABELS = { RETAIL: 'Direct Sales', ORDER: 'From Orders', ON_DEMAND: 'On-demand Sourcing' }
+const SOURCE_ICONS = { RETAIL: 'bi-bag-check', ORDER: 'bi-clipboard-check', ON_DEMAND: 'bi-truck' }
+const SOURCE_BADGES = { RETAIL: 'primary', ORDER: 'success', ON_DEMAND: 'warning' }
+const SOURCE_HINTS = {
+  RETAIL: 'Sales recorded directly at the till from existing stock.',
+  ORDER: 'Sales created by converting customer orders — unpaid portions are booked as customer debt.',
+  ON_DEMAND: 'Sales sourced from a supplier after the customer orders — until the payment is collected the balance is a debt owed to you.',
+}
+
 const CHART_H = 280
 const chartFont = { family: "'Segoe UI', system-ui, sans-serif" }
 const axisOpts = { grid: { color: 'rgba(0,0,0,.06)' }, ticks: { font: { size: 10, ...chartFont }, color: '#6b7a90' } }
@@ -59,6 +68,7 @@ export default function SalesReport() {
   const byProduct = data.byProduct || []
   const byCashier = data.byCashier || []
   const byCustomer = data.byCustomer || []
+  const sources = data.sources || []
 
   return (
     <div>
@@ -339,6 +349,56 @@ export default function SalesReport() {
               </div>
             </div>
           )}
+        </Card.Body>
+      </Card>
+
+      <Card style={{ border: 'none', boxShadow: '0 1px 8px rgba(0,0,0,.08)', borderRadius: 12 }} className="mb-3">
+        <Card.Body className="py-3">
+          <h6 className="fw-semibold mb-3" style={{ color: '#0d3b66', fontSize: '0.85rem' }}>Revenue by Source</h6>
+          <div className="table-responsive">
+            <Table size="sm" hover className="mb-2">
+              <thead>
+                <tr>
+                  <th>Source</th>
+                  <th className="text-end">Sales Count</th>
+                  <th className="text-end">Revenue</th>
+                  <th className="text-end">Received</th>
+                  <th className="text-end">Outstanding (Debt)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sources.length === 0 && <tr><td colSpan={5} className="text-center text-muted py-3">No sales in this period</td></tr>}
+                {sources.map((x) => (
+                  <tr key={x.source}>
+                    <td>
+                      <i className={`bi ${SOURCE_ICONS[x.source] || 'bi-bag'} me-2 text-muted`} style={{ fontSize: '0.8rem' }} />
+                      <Badge bg={SOURCE_BADGES[x.source] || 'secondary'} className="me-1 rounded-pill" style={{ fontSize: '0.65rem', fontWeight: 500 }}>
+                        {SOURCE_LABELS[x.source] || x.source}
+                      </Badge>
+                    </td>
+                    <td className="text-end">{x.count}</td>
+                    <td className="text-end fw-semibold">{formatMoney(x.total)}</td>
+                    <td className="text-end" style={{ color: '#1e7e46' }}>{formatMoney(x.paid)}</td>
+                    <td className="text-end text-danger">{formatMoney(x.outstanding)}</td>
+                  </tr>
+                ))}
+                {sources.length > 0 && (
+                  <tr className="table-light fw-semibold">
+                    <td>Total</td>
+                    <td className="text-end">{sources.reduce((a, x) => a + x.count, 0)}</td>
+                    <td className="text-end">{formatMoney(sources.reduce((a, x) => a + x.total, 0))}</td>
+                    <td className="text-end">{formatMoney(sources.reduce((a, x) => a + x.paid, 0))}</td>
+                    <td className="text-end">{formatMoney(sources.reduce((a, x) => a + x.outstanding, 0))}</td>
+                  </tr>
+                )}
+              </tbody>
+            </Table>
+          </div>
+          <div className="small text-muted">
+            {sources.map((x) => SOURCE_HINTS[x.source]).filter(Boolean).map((hint, i) => (
+              <div key={i} className="mb-1"><i className="bi bi-info-circle me-1" />{hint}</div>
+            ))}
+          </div>
         </Card.Body>
       </Card>
     </div>

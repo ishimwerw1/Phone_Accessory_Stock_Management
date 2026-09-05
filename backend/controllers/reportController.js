@@ -170,7 +170,7 @@ exports.salesReport = asyncHandler(async (req, res) => {
   const dateFmt = { day: '%Y-%m-%d', week: '%Y-%U', month: '%Y-%m', year: '%Y' };
 
   const [
-    byDateRaw, byMethodRaw, byProduct, byCashierRaw, byCustomerRaw, totalsRaw, byDatePay, byMethodPay, totalsPay, discountR,
+    byDateRaw, byMethodRaw, byProduct, byCashierRaw, byCustomerRaw, totalsRaw, byDatePay, byMethodPay, totalsPay, discountR, sourcesRaw,
   ] = await Promise.all([
     Sale.aggregate([
       { $match: match },
@@ -205,6 +205,11 @@ exports.salesReport = asyncHandler(async (req, res) => {
     Payment.aggregate([{ $match: payMatch }, { $group: { _id: '$method', paid: { $sum: '$amount' } } }]),
     Payment.aggregate([{ $match: payMatch }, { $group: { _id: null, paid: { $sum: '$amount' } } }]),
     Sale.aggregate([{ $match: match }, { $group: { _id: null, d: { $sum: '$discount' } } }]),
+    Sale.aggregate([
+      { $match: match },
+      { $group: { _id: { $ifNull: ['$source', 'RETAIL'] }, total: { $sum: '$total' }, paid: { $sum: '$amountPaid' }, outstanding: { $sum: '$outstanding' }, count: { $sum: 1 } } },
+      { $sort: { total: -1 } },
+    ]),
   ]);
 
   const payMap = {}; byDatePay.forEach((r) => { payMap[r._id] = r.paid; });
@@ -228,6 +233,7 @@ exports.salesReport = asyncHandler(async (req, res) => {
   const paid = totalsPay[0]?.paid || 0;
   success(res, 'Sales report', {
     byDate, byMethod, byProduct, byCashier, byCustomer,
+    sources: (sourcesRaw || []).map((s) => ({ source: s._id, total: s.total, paid: s.paid, outstanding: s.outstanding, count: s.count })),
     discount: discountR[0]?.d || 0,
     totals: { ...t, paid, profit: t.total - t.cost, outstanding: Math.max(0, t.total - paid) },
   });

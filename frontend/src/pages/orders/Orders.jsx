@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Card, Form, Button, Modal, Alert, Row, Col } from 'react-bootstrap'
+import { Card, Form, Button, Modal, Alert, Row, Col, Table } from 'react-bootstrap'
 import { useNavigate } from 'react-router-dom'
 import api, { getError } from '../../api/client'
 import DataTable from '../../components/common/DataTable'
@@ -25,6 +25,13 @@ export default function Orders() {
   const [showCreate, setShowCreate] = useState(false)
   const [products, setProducts] = useState([])
   const [newOrder, setNewOrder] = useState({ customerName: '', customerPhone: '', notes: '', expectedDeliveryDate: '', items: [{ product: '', name: '', quantity: '1', price: '' }], discount: '0' })
+
+  const [selectedMap, setSelectedMap] = useState({})
+  const [showBulk, setShowBulk] = useState(false)
+  const [bulkMethod, setBulkMethod] = useState('CASH')
+  const [bulkAmount, setBulkAmount] = useState('')
+  const [bulkReference, setBulkReference] = useState('')
+  const [notice, setNotice] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -146,6 +153,69 @@ export default function Orders() {
     }
   }
 
+  const isEligible = (o) => o.status === 'PENDING' || o.status === 'PROCESSING' || o.status === 'CONFIRMED'
+
+  const pageEligible = orders.filter(isEligible)
+  const allPageSelected = pageEligible.length > 0 && pageEligible.every((o) => selectedMap[o._id])
+
+  const toggleSelect = (o) => {
+    setSelectedMap((prev) => {
+      const next = { ...prev }
+      if (next[o._id]) delete next[o._id]
+      else next[o._id] = { orderNumber: o.orderNumber, customerName: o.customer?.name || o.customerName || 'Walk-in', total: o.total }
+      return next
+    })
+  }
+
+  const toggleSelectAllPage = () => {
+    setSelectedMap((prev) => {
+      const next = { ...prev }
+      pageEligible.forEach((o) => { delete next[o._id] })
+      if (!allPageSelected) pageEligible.forEach((o) => { next[o._id] = { orderNumber: o.orderNumber, customerName: o.customer?.name || o.customerName || 'Walk-in', total: o.total } })
+      return next
+    })
+  }
+
+  const selectedOrderIds = Object.keys(selectedMap)
+  const selectedOrders = Object.values(selectedMap)
+  const selectedTotal = selectedOrders.reduce((s, o) => s + o.total, 0)
+
+  const openBulk = () => {
+    setBulkMethod('CASH')
+    setBulkAmount('')
+    setBulkReference('')
+    setError('')
+    setNotice('')
+    setShowBulk(true)
+  }
+
+  const bulkFulfill = async () => {
+    if (!selectedOrderIds.length) return
+    setSaving(true)
+    setError('')
+    setNotice('')
+    try {
+      const { data } = await api.post('/orders/bulk-fulfill', {
+        ids: selectedOrderIds,
+        paymentMethod: bulkMethod,
+        amountPaid: bulkAmount === '' ? undefined : Number(bulkAmount),
+        paymentReference: bulkReference || undefined,
+      })
+      const sales = data?.data?.sales || []
+      setShowBulk(false)
+      setSelectedMap({})
+      setBulkAmount('')
+      setBulkReference('')
+      window.dispatchEvent(new Event('stock-updated'))
+      setNotice(`${sales.length} order(s) converted to sale(s): ${sales.map((s) => s.saleNumber).join(', ')}`)
+      load()
+    } catch (err) {
+      setError(getError(err))
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const fulfillTotal = useMemo(() => {
     if (!fulfilling) return 0
     return lines.reduce((s, l) => s + (Number(l.quantity) || 0) * (Number(l.price) || 0), 0) - Number(fulfilling.discount || 0)
@@ -163,13 +233,23 @@ export default function Orders() {
           <Form.Select size="sm" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1) }} style={{ maxWidth: 160 }}>
             {['ALL', 'PENDING', 'PROCESSING', 'COMPLETED', 'CANCELLED'].map((s) => <option key={s} value={s}>{s === 'ALL' ? 'All Statuses' : s}</option>)}
           </Form.Select>
+          <Button size="sm" variant="success" onClick={openBulk} disabled={!selectedOrderIds.length} title="Convert the selected orders into sales in one go">
+            <i className="bi bi-list-check me-1" />Process Selected {selectedOrderIds.length > 0 && `(${selectedOrderIds.length})`}
+          </Button>
           <Button size="sm" onClick={openCreate}><i className="bi bi-plus-lg me-1" />New Order</Button>
         </div>
       </div>
 
+      {notice && <Alert variant="success" dismissible onClose={() => setNotice('')} className="py-2 small"><i className="bi bi-check-circle me-1" />{notice}</Alert>}
+
       <Card body>
         <DataTable
           columns={[
+            { key: 'select', label: (
+              <Form.Check inline type="checkbox" checked={allPageSelected} disabled={!pageEligible.length} onChange={toggleSelectAllPage} title="Select all on this page" />
+            ), render: (o) => (
+              <Form.Check inline type="checkbox" checked={Boolean(selectedMap[o._id])} disabled={!isEligible(o)} onChange={() => toggleSelect(o)} />
+            )},
             { key: 'orderNumber', label: 'Order #', render: (o) => <strong>{o.orderNumber}</strong> },
             { key: 'createdAt', label: 'Date', render: (o) => new Date(o.createdAt).toLocaleString() },
             { key: 'customer', label: 'Customer', render: (o) => (
@@ -312,6 +392,70 @@ export default function Orders() {
           <Button variant="light" onClick={() => setFulfilling(null)} disabled={saving}>Cancel</Button>
           <Button onClick={fulfill} disabled={saving || !lines.length}>
             {saving ? 'Processing...' : <><i className="bi bi-bag-check me-1" />Create Sale</>}
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Bulk process selected orders modal */}
+      <Modal show={showBulk} onHide={() => !saving && setShowBulk(false)} size="lg" centered backdrop="static">
+        <Modal.Header closeButton={!saving}>
+          <Modal.Title className="fs-6 fw-bold"><i className="bi bi-list-check me-2" />Process {selectedOrders.length} Order{selectedOrders.length === 1 ? '' : 's'} → Sales</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {error && <Alert variant="danger" className="py-2 small">{error}</Alert>}
+          <p className="small text-muted">
+            Each selected order is converted into its own sale in a single batch. The unpaid total (shown below) is recorded as customer debt via a loan; the paid amount is recorded as received revenue.
+          </p>
+          <div className="table-responsive mb-3">
+            <Table size="sm" className="align-middle mb-0">
+              <thead><tr><th>Order</th><th>Customer</th><th className="text-end">Total</th></tr></thead>
+              <tbody>
+                {selectedOrders.map((o) => (
+                  <tr key={o.orderNumber}>
+                    <td><strong>{o.orderNumber}</strong></td>
+                    <td>{o.customerName}</td>
+                    <td className="text-end fw-semibold">{formatMoney(o.total)}</td>
+                  </tr>
+                ))}
+                <tr className="table-light"><td colSpan={2} className="fw-bold">Total Due for Batch</td><td className="text-end fw-bold fs-6">{formatMoney(selectedTotal)}</td></tr>
+              </tbody>
+            </Table>
+          </div>
+          <Row className="g-2 mb-2">
+            <Col sm={4}>
+              <Form.Group>
+                <Form.Label className="small fw-semibold">Payment Method *</Form.Label>
+                <Form.Select size="sm" value={bulkMethod} onChange={(e) => setBulkMethod(e.target.value)}>
+                  <option value="CASH">Cash</option>
+                  <option value="MOMO">MoMo</option>
+                  <option value="BANK">Bank</option>
+                  <option value="LOAN">Loan / Credit</option>
+                </Form.Select>
+              </Form.Group>
+            </Col>
+            <Col sm={4}>
+              <Form.Group>
+                <Form.Label className="small fw-semibold">{bulkMethod === 'LOAN' ? 'Down Payment (RWF)' : 'Amount Paid (RWF)'}</Form.Label>
+                <Form.Control size="sm" type="number" min="0" max={selectedTotal} value={bulkAmount} onChange={(e) => setBulkAmount(e.target.value)} placeholder={String(selectedTotal)} />
+              </Form.Group>
+            </Col>
+            {(bulkMethod === 'MOMO' || bulkMethod === 'BANK') && (
+              <Col sm={4}>
+                <Form.Group>
+                  <Form.Label className="small fw-semibold">Reference</Form.Label>
+                  <Form.Control size="sm" value={bulkReference} onChange={(e) => setBulkReference(e.target.value)} />
+                </Form.Group>
+              </Col>
+            )}
+          </Row>
+          <p className="small text-muted mb-0">
+            Payment is applied to the orders in list order — earlier orders are settled first. Leave amount blank to treat the whole batch as fully paid.
+          </p>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="light" onClick={() => setShowBulk(false)} disabled={saving}>Cancel</Button>
+          <Button variant="success" onClick={bulkFulfill} disabled={saving || !selectedOrders.length}>
+            {saving ? 'Processing...' : <><i className="bi bi-bag-check me-1" />Convert All to Sales</>}
           </Button>
         </Modal.Footer>
       </Modal>
