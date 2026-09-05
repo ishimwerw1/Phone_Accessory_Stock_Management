@@ -227,7 +227,7 @@ exports.fulfill = asyncHandler(async (req, res) => {
       method,
       amount: paidAmount,
       reference: paymentReference,
-      status: 'COMPLETED',
+      status: 'PAID',
       receivedBy: req.user._id,
     });
   }
