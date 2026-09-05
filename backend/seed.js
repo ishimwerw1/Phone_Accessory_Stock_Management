@@ -37,7 +37,7 @@ const seed = async () => {
   const settingCount = await Setting.countDocuments();
   if (!settingCount) {
     await Setting.insertMany([
-      { key: 'companyName', value: 'STOCK MANAGEMENT' },
+      { key: 'companyName', value: 'Nsenga Legacy Electronic' },
       { key: 'companyPhone', value: '+250 7XX XXX XXX' },
       { key: 'companyEmail', value: 'info@stockmanagement.rw' },
       { key: 'companyAddress', value: 'Kigali, Rwanda' },

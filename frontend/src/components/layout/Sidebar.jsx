@@ -20,10 +20,10 @@ export default function Sidebar({ open, onClose }) {
   return (
     <div className={`bcml-sidebar ${open ? 'show' : ''} shadow-sm h-100 d-flex flex-column overflow-hidden`}>
       <Link to="/dashboard" className="bcml-brand text-decoration-none d-flex align-items-center gap-2 p-3 flex-shrink-0" onClick={onClose}>
-        <img src="/logo.png" alt="logo" style={{ maxWidth: 36, height: 'auto' }} />
+        <img src="/company-logo.png" alt="logo" style={{ maxWidth: 36, height: 'auto' }} />
         <div className="bcml-brand-text text-white overflow-hidden">
-          <div className="title text-truncate fw-bold lh-sm" style={{ fontSize: '0.9rem' }}>Phone Accessories</div>
-          <div className="subtitle text-truncate text-white-50" style={{ fontSize: '0.75rem' }}>Stock Management Ltd</div>
+          <div className="title text-truncate fw-bold lh-sm" style={{ fontSize: '0.9rem' }}>Nsenga Legacy</div>
+          <div className="subtitle text-truncate text-white-50" style={{ fontSize: '0.75rem' }}>Electronic</div>
         </div>
       </Link>
 

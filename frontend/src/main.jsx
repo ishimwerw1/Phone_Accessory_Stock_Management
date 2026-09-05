@@ -91,7 +91,7 @@ const showUpdatePrompt = (onApply) => {
       <div style="width:44px;height:44px;flex:0 0 44px;border-radius:12px;background:linear-gradient(135deg, ${brand}, #1a6bb0);display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;font-weight:700">↻</div>
       <div style="flex:1;min-width:0">
         <div style="font-weight:700;color:${brand};font-size:14px;margin:0 0 4px 0;line-height:1.2">New version available</div>
-        <div style="color:#475569;font-size:12.5px;line-height:1.5;margin:0">An update for Kakajwi Stock is ready. Restart now to use the latest version.</div>
+        <div style="color:#475569;font-size:12.5px;line-height:1.5;margin:0">An update for Nsenga Legacy Electronic is ready. Restart now to use the latest version.</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:8px;align-items:stretch">
         <button id="pwa-update-apply" style="background:linear-gradient(135deg, ${brand}, #1a6bb0);color:#fff;border:0;padding:9px 14px;border-radius:10px;font-weight:600;font-size:12.5px;cursor:pointer;box-shadow:0 10px 20px -10px rgba(13,59,102,.55);line-height:1.1">Update</button>

@@ -30,13 +30,13 @@ export default function LoanDetail() {
       api.get('/settings').then((s) => {
         const c = s.data.data || {}
         setCompany({
-          name: c.companyName || 'Phone Accessories Stock Management Ltd',
+          name: c.companyName || 'Nsenga Legacy Electronic',
           slogan: c.slogan || '',
           phone: c.companyPhone || '',
           email: c.companyEmail || '',
           address: c.companyAddress || 'Kigali, Rwanda',
           tin: c.companyTin || '',
-          logoUrl: c.logoUrl || '/logo.png',
+          logoUrl: c.logoUrl || '/company-logo.png',
           footerNote: c.invoiceFooterNote || 'Thank you for your business!'
         })
       }).catch(() => {})

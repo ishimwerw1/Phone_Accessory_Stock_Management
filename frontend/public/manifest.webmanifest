@@ -1,6 +1,6 @@
 {
-  "name": "Phone Accessories Stock Management",
-  "short_name": "Kakajwi Stock",
+  "name": "Nsenga Legacy Electronic",
+  "short_name": "Nsenga Legacy Electronic",
   "description": "Manage phone spare parts, screens, batteries, boards, chargers, suppliers, customers, sales and loans.",
   "theme_color": "#0d3b66",
   "background_color": "#ffffff",
@@ -50,7 +50,7 @@
       "purpose": "any maskable"
     },
     {
-      "src": "/logo.png",
+      "src": "/company-logo.png",
       "sizes": "any",
       "type": "image/png",
       "purpose": "any"
@@ -111,7 +111,7 @@
   ],
   "screenshots": [
     {
-      "src": "/logo.png",
+      "src": "/company-logo.png",
       "sizes": "512x512",
       "type": "image/png",
       "label": "Application dashboard",

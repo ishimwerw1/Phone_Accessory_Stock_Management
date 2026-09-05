@@ -24,13 +24,13 @@ export default function SaleDetail() {
       setSale({ ...sale, _loan: loan })
       const c = settings || {}
       setCompany({
-        companyName: c.companyName || 'Phone Accessories Stock Management Ltd',
+        companyName: c.companyName || 'Nsenga Legacy Electronic',
         slogan: c.slogan || '',
         address: c.companyAddress || c.address || 'Kigali, Rwanda',
         phone: c.companyPhone || c.phone || '',
         email: c.companyEmail || c.email || '',
         tin: c.companyTin || '',
-        logoUrl: c.logoUrl || '/logo.png',
+        logoUrl: c.logoUrl || '/company-logo.png',
         invoiceFooterNote: c.invoiceFooterNote || 'Thank you for your business!'
       })
     }).catch(() => navigate('/sales'))

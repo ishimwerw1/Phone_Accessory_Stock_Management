@@ -20,7 +20,7 @@ export default function Layout() {
           </div>
         </main>
         <footer className="text-center text-muted small py-3 px-3 border-top no-print mt-auto bg-white">
-          © {new Date().getFullYear()} Phone Accessories Stock Management Ltd
+          © {new Date().getFullYear()} Nsenga Legacy Electronic
         </footer>
       </div>
     </div>

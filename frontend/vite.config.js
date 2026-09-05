@@ -9,10 +9,10 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['logo.png', 'logo.svg', 'favicon.svg', 'icons.svg', 'favicon.ico', 'favicon-32x32.png'],
+      includeAssets: ['company-logo.png', 'logo.svg', 'favicon.svg', 'icons.svg', 'favicon.ico', 'favicon-32x32.png'],
       manifest: {
-        name: 'Phone Accessories Stock Management',
-        short_name: 'Kakajwi Stock',
+        name: 'Nsenga Legacy Electronic',
+        short_name: 'Nsenga Legacy Electronic',
         description: 'Manage phone spare parts, screens, batteries, boards, chargers, suppliers, customers, sales and loans.',
         theme_color: '#0d3b66',
         background_color: '#ffffff',
@@ -36,7 +36,7 @@ export default defineConfig({
             purpose: 'any maskable',
           },
           {
-            src: '/logo.png',
+            src: '/company-logo.png',
             sizes: 'any',
             type: 'image/png',
           },

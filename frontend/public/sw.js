@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'kakajwi-stock-v1';
+const CACHE_VERSION = 'nsenga-legacy-electronic-v1';
 const STATIC_CACHE = `${CACHE_VERSION}::static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}::runtime`;
 const IMAGE_CACHE = `${CACHE_VERSION}::images`;
@@ -8,7 +8,7 @@ const CORE_ASSETS = [
   '/index.html',
   '/offline.html',
   '/manifest.webmanifest',
-  '/logo.png',
+  '/company-logo.png',
   '/logo.svg',
   '/favicon.svg',
   '/pwa-192x192.png',
