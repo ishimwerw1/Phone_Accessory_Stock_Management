@@ -127,7 +127,7 @@ export default function Orders() {
       setFulfilling(null)
       setAmountPaid(''); setReference('')
       window.dispatchEvent(new Event('stock-updated'))
-      if (data?.data?.sale) navigate(`/sales/${data.data.sale}`)
+      if (data?.data?.sale) navigate(`/sales/${data.data.sale?._id || data.data.sale}`)
       else load()
     } catch (err) {
       setError(getError(err))

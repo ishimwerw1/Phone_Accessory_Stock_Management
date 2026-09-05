@@ -218,6 +218,8 @@ exports.salesReport = asyncHandler(async (req, res) => {
   const payMethodMap = {}; byMethodPay.forEach((r) => { payMethodMap[r._id] = r.paid; });
   const byMethod = byMethodRaw.map((r) => ({ ...r, paid: payMethodMap[r._id] || 0 }));
 
+  const byCashier = byCashierRaw.map((r) => ({ ...r, name: r.name || 'Unknown' }));
+
   const paidByCustomer = {};
   const cids = byCustomerRaw.map((r) => r._id).filter(Boolean);
   if (cids.length > 0) {
