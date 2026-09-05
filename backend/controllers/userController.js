@@ -1,4 +1,4 @@
-const { User, AuditLog } = require('../models');
+const { User, AuditLog, Session } = require('../models');
 const { success, error, asyncHandler } = require('../utils/response');
 const { ROLES } = require('../utils/constants');
 const { audit } = require('../services/auditService');
@@ -35,6 +35,12 @@ exports.updateUser = asyncHandler(async (req, res) => {
   if (password) user.password = password;
   if (typeof isActive === 'boolean') user.isActive = isActive;
   await user.save();
+  if ((typeof isActive === 'boolean' && !isActive) || password) {
+    await Session.updateMany(
+      { user: user._id, active: true },
+      { $set: { active: false, revokedAt: new Date(), revokedBy: 'admin' } }
+    );
+  }
   await audit(req, 'USER_UPDATED', 'User', user._id, { name: user.name, role: user.role });
   success(res, 'User updated', user.toSafeJSON());
 });

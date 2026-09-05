@@ -21,11 +21,7 @@ export function AuthProvider({ children }) {
   }, [])
 
   const logout = useCallback(async () => {
-    try {
-      await api.post('/auth/logout')
-    } catch {
-      /* ignore */
-    }
+    try { await api.post('/auth/logout') } catch { /* ignore */ }
     localStorage.removeItem('pas_token')
     localStorage.removeItem('pas_user')
     setUser(null)
@@ -35,6 +31,33 @@ export function AuthProvider({ children }) {
     const { data } = await api.get('/auth/me')
     localStorage.setItem('pas_user', JSON.stringify(data.data.user))
     setUser(data.data.user)
+  }, [])
+
+  const updateProfile = useCallback(async (payload) => {
+    const { data } = await api.put('/auth/me', payload)
+    localStorage.setItem('pas_user', JSON.stringify(data.data.user))
+    setUser(data.data.user)
+    return data.data.user
+  }, [])
+
+  const changePassword = useCallback(async (payload) => {
+    const { data } = await api.put('/auth/password', payload)
+    return data
+  }, [])
+
+  const getSessions = useCallback(async () => {
+    const { data } = await api.get('/auth/sessions')
+    return data.data
+  }, [])
+
+  const revokeSession = useCallback(async (id) => {
+    const { data } = await api.delete(`/auth/sessions/${id}`)
+    return data.data
+  }, [])
+
+  const revokeOthers = useCallback(async () => {
+    const { data } = await api.post('/auth/sessions/revoke-others')
+    return data.data
   }, [])
 
   const hasPermission = useCallback(
@@ -56,7 +79,14 @@ export function AuthProvider({ children }) {
     user?.role === 'SUPER_ADMIN'
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, refreshUser, hasPermission, isSuperAdmin }}>
+    <AuthContext.Provider
+      value={{
+        user, login, logout, refreshUser,
+        updateProfile, changePassword,
+        getSessions, revokeSession, revokeOthers,
+        hasPermission, isSuperAdmin,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   )

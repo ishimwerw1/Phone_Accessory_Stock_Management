@@ -1,6 +1,7 @@
 import { Card, Row, Col, Badge } from 'react-bootstrap'
 import { useAuth } from '../context/AuthContext'
 import { useLanguage } from '../context/LanguageContext'
+import AccountSecurity from '../components/account/AccountSecurity'
 
 export default function Profile() {
   const { user } = useAuth()
@@ -47,8 +48,10 @@ export default function Profile() {
               <span className="text-muted small">Member Since</span>
               <span className="small fw-semibold">{new Date(user.createdAt).toLocaleDateString()}</span>
             </div>
-            <p className="small text-muted mt-3 mb-0">Your profile is managed by an administrator.</p>
           </Card>
+
+          <hr className="my-4" />
+          <AccountSecurity />
         </Col>
       </Row>
     </div>

@@ -1,5 +1,6 @@
 module.exports = {
   User: require('./User'),
+  Session: require('./Session'),
   Brand: require('./Brand'),
   PhoneModel: require('./PhoneModel'),
   Category: require('./Category'),

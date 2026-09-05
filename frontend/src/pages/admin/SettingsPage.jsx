@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Card, Row, Col, Form, Button, Alert } from 'react-bootstrap'
 import api, { getError } from '../../api/client'
+import AccountSecurity from '../../components/account/AccountSecurity'
 
 const defaults = {
   companyName: '', companyPhone: '', companyEmail: '', companyAddress: '',
@@ -107,6 +108,9 @@ export default function SettingsPage() {
           </Card>
         </Col>
       </Row>
+
+      <hr className="my-4" />
+      <AccountSecurity />
     </div>
   )
 }

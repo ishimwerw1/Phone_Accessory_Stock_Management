@@ -9,7 +9,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['logo.png', 'logo.svg', 'favicon.svg', 'icons.svg'],
+      includeAssets: ['logo.png', 'logo.svg', 'favicon.svg', 'icons.svg', 'favicon.ico', 'favicon-32x32.png'],
       manifest: {
         name: 'Phone Accessories Stock Management',
         short_name: 'Kakajwi Stock',
