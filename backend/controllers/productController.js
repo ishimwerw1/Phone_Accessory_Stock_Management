@@ -2,6 +2,7 @@ const { Product, StockTransaction, Sale, Supplier, Brand, PhoneModel, Category }
 const { success, error, asyncHandler } = require('../utils/response');
 const { audit } = require('../services/auditService');
 const { nextNumber } = require('../utils/helpers');
+const { getExchangeRates, convertAEDtoRWF } = require('../utils/exchangeRate');
 
 const populate = [
   { path: 'category', select: 'name parent' },
@@ -116,7 +117,16 @@ exports.create = asyncHandler(async (req, res) => {
     const dup = await Product.findOne({ sku });
     if (dup) return error(res, `SKU ${sku} already exists`);
   }
-  const product = await Product.create({ ...req.body, sku });
+
+  const body = { ...req.body };
+  if (Number(body.buyingPriceAED) > 0) {
+    const rates = await getExchangeRates();
+    const { rwf } = convertAEDtoRWF(body.buyingPriceAED, rates);
+    body.buyingPrice = rwf;
+    body.exchangeRateSnapshot = { aedToUsd: rates.aedToUsd, usdToRwf: rates.usdToRwf };
+  }
+
+  const product = await Product.create({ ...body, sku });
   if (product.quantity > 0) {
     await StockTransaction.create({
       product: product._id,
@@ -152,6 +162,19 @@ exports.update = asyncHandler(async (req, res) => {
   } else {
     delete req.body.sku;
   }
+
+  if (Number(req.body.buyingPriceAED) > 0) {
+    if (Number(req.body.buyingPriceAED) !== Number(product.buyingPriceAED || 0)) {
+      const rates = await getExchangeRates();
+      const { rwf } = convertAEDtoRWF(req.body.buyingPriceAED, rates);
+      req.body.buyingPrice = rwf;
+      req.body.exchangeRateSnapshot = { aedToUsd: rates.aedToUsd, usdToRwf: rates.usdToRwf };
+    } else {
+      req.body.buyingPrice = product.buyingPrice;
+      req.body.exchangeRateSnapshot = product.exchangeRateSnapshot || { aedToUsd: 0, usdToRwf: 0 };
+    }
+  }
+
   Object.assign(product, req.body);
   await product.save();
   await audit(req, 'PRODUCT_UPDATED', 'Product', id, req.body);

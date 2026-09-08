@@ -3,6 +3,7 @@ import { Card, Row, Col, Form, Button, InputGroup, ListGroup, Badge, Alert, Moda
 import { useNavigate } from 'react-router-dom'
 import api, { getError } from '../../api/client'
 import { formatMoney } from '../../context/LanguageContext'
+import { extractRates, convertAED } from '../../utils/currency'
 
 export default function NewSale() {
   const navigate = useNavigate()
@@ -27,13 +28,15 @@ export default function NewSale() {
   const [outOfStockProduct, setOutOfStockProduct] = useState(null)
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [addingProduct, setAddingProduct] = useState(false)
-  const [newProduct, setNewProduct] = useState({ name: '', sellingPrice: '', buyingPrice: '' })
+  const [newProduct, setNewProduct] = useState({ name: '', sellingPrice: '', buyingPriceAED: '' })
+  const [rates, setRates] = useState({ aedToUsd: 0.2723, usdToRwf: 1330 })
   const searchTimer = useRef(null)
 
   useEffect(() => {
     api.get('/products', { params: { limit: 200, status: 'ACTIVE' } })
       .then((r) => setProducts(r.data.data.products))
       .catch((e) => setError(getError(e)))
+    api.get('/exchange-rates').then((r) => setRates(extractRates(r.data.data))).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -121,11 +124,11 @@ export default function NewSale() {
       const { data } = await api.post('/products', {
         name: newProduct.name.trim(),
         sellingPrice: Number(newProduct.sellingPrice || 0),
-        buyingPrice: Number(newProduct.buyingPrice || 0),
+        buyingPriceAED: Number(newProduct.buyingPriceAED || 0),
       })
       const created = data.data
       addToCart(created)
-      setNewProduct({ name: '', sellingPrice: '', buyingPrice: '' })
+      setNewProduct({ name: '', sellingPrice: '', buyingPriceAED: '' })
       setShowAddProduct(false)
       api.get('/products', { params: { limit: 200, status: 'ACTIVE' } }).then((r) => setProducts(r.data.data.products)).catch(() => {})
     } catch (err) {
@@ -170,7 +173,7 @@ export default function NewSale() {
     setCart([]); setDiscount(0); setPaymentMethod('CASH'); setAmountPaidInput('')
     setPaymentReference(''); setDueDate(''); setNotes(''); setCustomer(null)
     setNewCustomer({ name: '', phone: '' }); setCustomerQuery(''); setError('')
-    setOutOfStockProduct(null); setNewProduct({ name: '', sellingPrice: '', buyingPrice: '' })
+    setOutOfStockProduct(null); setNewProduct({ name: '', sellingPrice: '', buyingPriceAED: '' })
   }
 
   /* ---------- Success screen ---------- */
@@ -458,11 +461,26 @@ export default function NewSale() {
             </Col>
             <Col sm={6}>
               <Form.Group>
-                <Form.Label className="small fw-semibold">Buying Price (RWF)</Form.Label>
-                <Form.Control type="number" min="0" value={newProduct.buyingPrice} onChange={(e) => setNewProduct({ ...newProduct, buyingPrice: e.target.value })} />
+                <Form.Label className="small fw-semibold">Buy Price Per Unit (AED)</Form.Label>
+                <InputGroup size="sm">
+                  <InputGroup.Text>AED</InputGroup.Text>
+                  <Form.Control type="number" min="0" value={newProduct.buyingPriceAED} onChange={(e) => setNewProduct({ ...newProduct, buyingPriceAED: e.target.value })} placeholder="e.g. 500" />
+                </InputGroup>
               </Form.Group>
             </Col>
           </Row>
+          {convertAED(newProduct.buyingPriceAED, rates).rwf > 0 && (
+            <div className="small mt-2 rounded" style={{ background: '#f4f7fb', border: '1px solid #e2e8f0' }}>
+              <div className="d-flex justify-content-between px-3 py-1">
+                <span className="text-muted">Equivalent USD</span>
+                <span className="fw-semibold">${convertAED(newProduct.buyingPriceAED, rates).usd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+              <div className="d-flex justify-content-between px-3 py-1 border-top" style={{ background: '#eef6ef' }}>
+                <span className="text-muted fw-semibold">Final Buying Price</span>
+                <span className="fw-bold text-success">{convertAED(newProduct.buyingPriceAED, rates).rwf.toLocaleString()} RWF</span>
+              </div>
+            </div>
+          )}
           <p className="small text-muted mt-2 mb-0"><i className="bi bi-info-circle me-1" />A SKU is generated automatically. The product starts with 0 stock.</p>
         </Modal.Body>
         <Modal.Footer>

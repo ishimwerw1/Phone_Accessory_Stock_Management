@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
-import { Card, Row, Col, Form, Button, Alert, Badge } from 'react-bootstrap'
+import { Card, Row, Col, Form, Button, Alert, Badge, InputGroup } from 'react-bootstrap'
 import api, { getError } from '../../api/client'
+import { extractRates, convertAED } from '../../utils/currency'
 
 export default function StockIn() {
   const [products, setProducts] = useState([])
   const [productId, setProductId] = useState('')
   const [quantity, setQuantity] = useState('')
-  const [buyingPrice, setBuyingPrice] = useState('')
+  const [buyingPriceAED, setBuyingPriceAED] = useState('')
+  const [rates, setRates] = useState({ aedToUsd: 0.2723, usdToRwf: 1330 })
   const [reference, setReference] = useState('')
   const [reason, setReason] = useState('')
   const [error, setError] = useState('')
@@ -17,9 +19,13 @@ export default function StockIn() {
     api.get('/products', { params: { limit: 200, status: 'ACTIVE' } })
       .then((r) => setProducts(r.data.data.products || []))
       .catch((e) => setError(getError(e)))
+    api.get('/exchange-rates')
+      .then((r) => setRates(extractRates(r.data.data)))
+      .catch(() => {})
   }, [])
 
   const selected = products.find((p) => p._id === productId)
+  const converted = convertAED(buyingPriceAED, rates)
 
   const submit = async (e) => {
     e.preventDefault()
@@ -32,7 +38,7 @@ export default function StockIn() {
       const { data } = await api.post('/stock/in', {
         productId,
         quantity: Number(quantity),
-        buyingPrice: buyingPrice === '' ? undefined : Number(buyingPrice),
+        buyingPriceAED: buyingPriceAED === '' ? undefined : Number(buyingPriceAED),
         reference: reference || undefined,
         reason: reason || undefined
       })
@@ -40,7 +46,7 @@ export default function StockIn() {
       setSuccess({ name: p.name, reference })
       setProductId('')
       setQuantity('')
-      setBuyingPrice('')
+      setBuyingPriceAED('')
       setReference('')
       setReason('')
     } catch (err) {
@@ -69,11 +75,7 @@ export default function StockIn() {
               {error && <Alert variant="danger" className="py-2 small">{error}</Alert>}
               <Form.Group className="mb-3">
                 <Form.Label>Product *</Form.Label>
-                <Form.Select value={productId} onChange={(e) => {
-                  setProductId(e.target.value)
-                  const p = products.find((x) => x._id === e.target.value)
-                  if (p && !buyingPrice) setBuyingPrice(p.buyingPrice)
-                }} required>
+                <Form.Select value={productId} onChange={(e) => setProductId(e.target.value)} required>
                   <option value="">-- Select product --</option>
                   {products.map((p) => (
                     <option key={p._id} value={p._id}>{p.name} ({p.sku}) — stock: {p.quantity}</option>
@@ -88,10 +90,20 @@ export default function StockIn() {
                     <Form.Control type="number" min="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} required />
                   </Form.Group>
                 </Col>
-                <Col md={4}>
+                <Col md={8}>
                   <Form.Group>
-                    <Form.Label>Buying Price (RWF)</Form.Label>
-                    <Form.Control type="number" min="0" value={buyingPrice} onChange={(e) => setBuyingPrice(e.target.value)} placeholder={selected ? selected.buyingPrice : 'RWF'} />
+                    <Form.Label>Buy Price Per Unit (AED)</Form.Label>
+                    <InputGroup>
+                      <InputGroup.Text>AED (UAE Dirham)</InputGroup.Text>
+                      <Form.Control
+                        type="number"
+                        min="0"
+                        value={buyingPriceAED}
+                        onChange={(e) => setBuyingPriceAED(e.target.value)}
+                        placeholder={selected ? `${selected.buyingPrice} RWF currently` : 'e.g. 500'}
+                      />
+                    </InputGroup>
+                    <Form.Text muted>Leave empty to keep the existing buying price. New AED price is converted to RWF.</Form.Text>
                   </Form.Group>
                 </Col>
                 <Col md={4}>
@@ -101,6 +113,29 @@ export default function StockIn() {
                   </Form.Group>
                 </Col>
               </Row>
+
+              {converted.rwf > 0 && (
+                <div className="mt-2 rounded small" style={{ background: '#f4f7fb', border: '1px solid #e2e8f0' }}>
+                  <div className="d-flex justify-content-between px-3 py-1">
+                    <span className="text-muted">Equivalent USD</span>
+                    <span className="fw-semibold">${converted.usd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="d-flex justify-content-between px-3 py-1 border-top">
+                    <span className="text-muted">Equivalent RWF (per unit)</span>
+                    <span className="fw-semibold">{converted.rwf.toLocaleString()} RWF</span>
+                  </div>
+                  {converted.rwf > 0 && Number(quantity) > 0 && (
+                    <div className="d-flex justify-content-between px-3 py-1 border-top">
+                      <span className="text-muted">Total Buying Cost ({Number(quantity)} × {converted.rwf.toLocaleString()} RWF)</span>
+                      <span className="fw-semibold">{(converted.rwf * Number(quantity)).toLocaleString()} RWF</span>
+                    </div>
+                  )}
+                  <div className="d-flex justify-content-between px-3 py-1 border-top" style={{ background: '#eef6ef' }}>
+                    <span className="text-muted fw-semibold">FINAL BUYING PRICE (per unit)</span>
+                    <span className="fw-bold text-success">{converted.rwf.toLocaleString()} RWF</span>
+                  </div>
+                </div>
+              )}
 
               <Form.Group className="mt-3">
                 <Form.Label>Reason / Notes</Form.Label>

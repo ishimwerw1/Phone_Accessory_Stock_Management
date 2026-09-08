@@ -106,7 +106,9 @@ export default function Products() {
             )},
             { key: 'sku', label: 'SKU', render: (p) => <code className="small">{p.sku}</code> },
             { key: 'category', label: 'Category', render: (p) => <span className="small">{p.category?.parent ? `${p.category.parent.name} → ${p.category.name}` : p.category?.name || '-'}</span> },
-            { key: 'buyingPrice', label: 'Buy', render: (p) => `${Number(p.buyingPrice).toLocaleString()} RWF` },
+            { key: 'buyingPrice', label: 'Buy', render: (p) => p.buyingPriceAED > 0 ? (
+                <span className="small">{Number(p.buyingPriceAED).toLocaleString()} AED<br /><span className="text-muted">{Number(p.buyingPrice).toLocaleString()} RWF</span></span>
+              ) : `${Number(p.buyingPrice).toLocaleString()} RWF` },
             { key: 'sellingPrice', label: 'Sell', render: (p) => `${Number(p.sellingPrice).toLocaleString()} RWF` },
             { key: 'quantity', label: 'Stock', render: (p) => (
               <span className={`fw-semibold ${p.quantity === 0 ? 'text-danger' : p.quantity <= p.minStock ? 'text-warning' : ''}`}>

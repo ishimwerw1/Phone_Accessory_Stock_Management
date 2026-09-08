@@ -17,6 +17,11 @@ const productSchema = new mongoose.Schema(
     },
     description: String,
     buyingPrice: { type: Number, required: true, min: 0, default: 0 },
+    buyingPriceAED: { type: Number, min: 0, default: 0 },
+    exchangeRateSnapshot: {
+      aedToUsd: { type: Number, default: 0 },
+      usdToRwf: { type: Number, default: 0 },
+    },
     sellingPrice: { type: Number, required: true, min: 0, default: 0 },
     quantity: { type: Number, required: true, min: 0, default: 0 },
     minStock: { type: Number, default: 5 },

@@ -30,6 +30,7 @@ app.use('/api/reports', require('./routes/reportRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
 app.use('/api/audit-logs', require('./routes/auditLogRoutes'));
 app.use('/api/settings', require('./routes/settingRoutes'));
+app.use('/api/exchange-rates', require('./routes/exchangeRateRoutes'));
 app.use('/api/expenses', require('./routes/expenseRoutes'));
 app.use('/api/purchases', require('./routes/purchaseRoutes'));
 app.use('/api/supplier-payments', require('./routes/supplierPaymentRoutes'));

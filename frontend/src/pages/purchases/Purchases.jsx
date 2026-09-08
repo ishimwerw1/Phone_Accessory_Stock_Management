@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Card, Button, Modal, Form, Row, Col, Alert, Badge } from 'react-bootstrap'
+import { Card, Button, Modal, Form, Row, Col, Alert, Badge, InputGroup } from 'react-bootstrap'
 import api, { getError } from '../../api/client'
 import DataTable from '../../components/common/DataTable'
 import StatusBadge from '../../components/common/StatusBadge'
 import ConfirmDialog from '../../components/common/ConfirmDialog'
 import { useAuth } from '../../context/AuthContext'
 import { formatMoney } from '../../context/LanguageContext'
+import { extractRates, convertAED } from '../../utils/currency'
 
 export default function Purchases() {
   const [purchases, setPurchases] = useState([])
@@ -31,7 +32,8 @@ export default function Purchases() {
   const [showNewSupplier, setShowNewSupplier] = useState(false)
   const [newSupplierForm, setNewSupplierForm] = useState({ name: '', phone: '' })
   const [showNewProduct, setShowNewProduct] = useState(false)
-  const [newProductForm, setNewProductForm] = useState({ name: '', buyingPrice: '', sellingPrice: '' })
+  const [newProductForm, setNewProductForm] = useState({ name: '', buyingPriceAED: '', sellingPrice: '' })
+  const [rates, setRates] = useState({ aedToUsd: 0.2723, usdToRwf: 1330 })
   const [quickSaving, setQuickSaving] = useState(false)
   const { hasPermission } = useAuth()
 
@@ -57,14 +59,16 @@ export default function Purchases() {
 
   const loadFormDeps = async () => {
     try {
-      const [sRes, pRes] = await Promise.all([
+      const [sRes, pRes, rateRes] = await Promise.all([
         api.get('/suppliers'),
-        api.get('/products', { params: { limit: 200 } })
+        api.get('/products', { params: { limit: 200 } }),
+        api.get('/exchange-rates')
       ])
       const supData = sRes.data.data
       setSuppliers(Array.isArray(supData) ? supData : [])
       const prodRes = pRes.data.data
       setProducts(Array.isArray(prodRes) ? prodRes : (Array.isArray(prodRes?.products) ? prodRes.products : []))
+      setRates(extractRates(rateRes.data.data))
     } catch {}
   }
 
@@ -131,12 +135,12 @@ export default function Purchases() {
     try {
       const { data } = await api.post('/products', {
         name: newProductForm.name.trim(),
-        buyingPrice: Number(newProductForm.buyingPrice || 0),
+        buyingPriceAED: Number(newProductForm.buyingPriceAED || 0),
         sellingPrice: Number(newProductForm.sellingPrice || 0),
       })
       setProducts((prev) => [...prev, data.data])
       setForm((f) => ({ ...f, items: [{ ...f.items[0], product: data.data._id, costPrice: data.data.buyingPrice }] }))
-      setNewProductForm({ name: '', buyingPrice: '', sellingPrice: '' })
+      setNewProductForm({ name: '', buyingPriceAED: '', sellingPrice: '' })
       setShowNewProduct(false)
     } catch (err) {
       setError(getError(err))
@@ -345,7 +349,7 @@ export default function Purchases() {
                     <Form.Control size="sm" type="number" min="1" placeholder="Qty" value={item.quantity} onChange={(e) => updateItem(idx, 'quantity', e.target.value)} required />
                   </Col>
                   <Col md={3}>
-                    <Form.Control size="sm" type="number" min="0" placeholder="Cost Price" value={item.costPrice} onChange={(e) => updateItem(idx, 'costPrice', e.target.value)} required />
+                    <Form.Control size="sm" type="number" min="0" placeholder="Cost (RWF)" value={item.costPrice} onChange={(e) => updateItem(idx, 'costPrice', e.target.value)} required />
                   </Col>
                   <Col md={1}>
                     <small className="text-muted">{item.quantity && item.costPrice ? formatMoney(Number(item.quantity) * Number(item.costPrice)) : ''}</small>
@@ -506,8 +510,11 @@ export default function Purchases() {
           <Row className="g-2">
             <Col sm={6}>
               <Form.Group>
-                <Form.Label className="small fw-semibold">Buying Price (RWF)</Form.Label>
-                <Form.Control type="number" min="0" value={newProductForm.buyingPrice} onChange={(e) => setNewProductForm({ ...newProductForm, buyingPrice: e.target.value })} />
+                <Form.Label className="small fw-semibold">Buy Price Per Unit (AED)</Form.Label>
+                <InputGroup size="sm">
+                  <InputGroup.Text>AED</InputGroup.Text>
+                  <Form.Control type="number" min="0" value={newProductForm.buyingPriceAED} onChange={(e) => setNewProductForm({ ...newProductForm, buyingPriceAED: e.target.value })} placeholder="e.g. 500" />
+                </InputGroup>
               </Form.Group>
             </Col>
             <Col sm={6}>
@@ -517,6 +524,18 @@ export default function Purchases() {
               </Form.Group>
             </Col>
           </Row>
+          {convertAED(newProductForm.buyingPriceAED, rates).rwf > 0 && (
+            <div className="small mt-2 rounded" style={{ background: '#f4f7fb', border: '1px solid #e2e8f0' }}>
+              <div className="d-flex justify-content-between px-3 py-1">
+                <span className="text-muted">Equivalent USD</span>
+                <span className="fw-semibold">${convertAED(newProductForm.buyingPriceAED, rates).usd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+              <div className="d-flex justify-content-between px-3 py-1 border-top" style={{ background: '#eef6ef' }}>
+                <span className="text-muted fw-semibold">Final Buying Price</span>
+                <span className="fw-bold text-success">{convertAED(newProductForm.buyingPriceAED, rates).rwf.toLocaleString()} RWF</span>
+              </div>
+            </div>
+          )}
           <p className="small text-muted mt-2 mb-0"><i className="bi bi-info-circle me-1" />A SKU is generated automatically.</p>
         </Modal.Body>
         <Modal.Footer>

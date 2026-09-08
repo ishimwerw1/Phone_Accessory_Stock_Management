@@ -6,7 +6,8 @@ import AccountSecurity from '../../components/account/AccountSecurity'
 const defaults = {
   companyName: '', companyPhone: '', companyEmail: '', companyAddress: '',
   companyTin: '', logoUrl: '/logo.png',
-  currency: 'RWF', loanDays: 30
+  currency: 'RWF', loanDays: 30,
+  aedToUsd: 0.2723, usdToRwf: 1330
 }
 
 export default function SettingsPage() {
@@ -41,6 +42,8 @@ export default function SettingsPage() {
         logoUrl: form.logoUrl,
         currency: form.currency,
         loanDays: Number(form.loanDays) || 30,
+        aedToUsd: Number(form.aedToUsd),
+        usdToRwf: Number(form.usdToRwf),
       })
       setSuccess(true)
       setTimeout(() => setSuccess(false), 3000)
@@ -88,6 +91,25 @@ export default function SettingsPage() {
                   </Form.Group>
                 </Col>
               </Row>
+
+              <h6 className="fw-semibold text-uppercase text-muted small mb-3">Exchange Rates</h6>
+              <Row className="g-3 mb-4">
+                <Col md={4}>
+                  <Form.Group><Form.Label>AED → USD</Form.Label>
+                    <Form.Control type="number" min="0" step="0.0001" value={form.aedToUsd} onChange={set('aedToUsd')} placeholder="e.g. 0.2723" />
+                  </Form.Group>
+                </Col>
+                <Col md={4}>
+                  <Form.Group><Form.Label>USD → RWF</Form.Label>
+                    <Form.Control type="number" min="0" value={form.usdToRwf} onChange={set('usdToRwf')} placeholder="e.g. 1330" />
+                  </Form.Group>
+                </Col>
+              </Row>
+              <p className="small text-muted mb-4">
+                Used to convert the AED buying price entered on products into USD and RWF.
+                Products keep a snapshot of the rate used at the time they were saved, so changing
+                these rates only affects new entries.
+              </p>
 
               <Button type="submit" disabled={saving}>
                 {saving ? <><span className="spinner-border spinner-border-sm me-1" />Saving...</> : <><i className="bi bi-check-lg me-1" />Save Settings</>}

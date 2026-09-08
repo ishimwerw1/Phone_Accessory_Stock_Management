@@ -43,6 +43,8 @@ const seed = async () => {
       { key: 'companyAddress', value: 'Kigali, Rwanda' },
       { key: 'currency', value: 'RWF' },
       { key: 'loanDays', value: 30 },
+      { key: 'aedToUsd', value: 0.2723 },
+      { key: 'usdToRwf', value: 1330 },
     ]);
     console.log('Created default settings');
   }

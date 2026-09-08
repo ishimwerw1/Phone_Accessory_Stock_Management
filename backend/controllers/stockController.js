@@ -3,6 +3,7 @@ const { success, error, asyncHandler } = require('../utils/response');
 const { nextNumber } = require('../utils/helpers');
 const { audit } = require('../services/auditService');
 const { notify, checkLowStock } = require('../services/notificationService');
+const { getExchangeRates, convertAEDtoRWF } = require('../utils/exchangeRate');
 
 const findProduct = async (id) => {
   const p = await Product.findById(id);
@@ -11,13 +12,21 @@ const findProduct = async (id) => {
 };
 
 exports.stockIn = asyncHandler(async (req, res) => {
-  const { productId, quantity, buyingPrice, reference, reason } = req.body;
+  const { productId, quantity, buyingPrice, buyingPriceAED, reference, reason } = req.body;
   const qty = Number(quantity);
   if (!qty || qty <= 0) return error(res, 'Quantity must be greater than zero');
   const product = await findProduct(productId);
   const prevQty = product.quantity;
   product.quantity = prevQty + qty;
-  if (buyingPrice) product.buyingPrice = Number(buyingPrice);
+  if (Number(buyingPriceAED) > 0) {
+    const rates = await getExchangeRates();
+    const { rwf } = convertAEDtoRWF(buyingPriceAED, rates);
+    product.buyingPrice = rwf;
+    product.buyingPriceAED = Number(buyingPriceAED);
+    product.exchangeRateSnapshot = { aedToUsd: rates.aedToUsd, usdToRwf: rates.usdToRwf };
+  } else if (buyingPrice) {
+    product.buyingPrice = Number(buyingPrice);
+  }
   await product.save();
 
   const grn = reference || await nextNumber('GRN');

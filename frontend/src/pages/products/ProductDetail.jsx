@@ -68,7 +68,14 @@ export default function ProductDetail() {
               <Info label="Part Type" value={product.partType} />
               <Info label="Condition" value={product.condition} />
               <Info label="Compatible Models" value={(product.compatibleModels || []).map((m) => m?.name).join(', ')} />
-              <Info label="Buying Price" value={`${Number(product.buyingPrice).toLocaleString()} RWF`} />
+              <Info label="Buying Price (AED)" value={product.buyingPriceAED > 0 ? `${Number(product.buyingPriceAED).toLocaleString()} AED` : null} />
+              {product.buyingPriceAED > 0 && (
+                <div className="small text-muted text-end">
+                  <div>USD: ${(Number(product.buyingPriceAED) * (product.exchangeRateSnapshot?.aedToUsd || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                  <div>RWF: {Number(product.buyingPrice).toLocaleString()} RWF</div>
+                </div>
+              )}
+              <Info label="Final Buying Price" value={`${Number(product.buyingPrice).toLocaleString()} RWF`} />
               <Info label="Selling Price" value={`${Number(product.sellingPrice).toLocaleString()} RWF`} />
               <Info label="Current Quantity" value={<span className={product.quantity === 0 ? 'text-danger' : product.quantity <= product.minStock ? 'text-warning' : 'text-success'}>{product.quantity}</span>} />
               <Info label="Min Stock Level" value={product.minStock} />

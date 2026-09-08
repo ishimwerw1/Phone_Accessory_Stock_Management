@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
-import { Modal, Form, Row, Col, Button, Alert } from 'react-bootstrap'
+import { Modal, Form, Row, Col, Button, Alert, InputGroup } from 'react-bootstrap'
 import api from '../../api/client'
 import { getError } from '../../api/client'
+import { extractRates, convertAED } from '../../utils/currency'
 
 const empty = {
   name: '', sku: '', barcode: '', category: '', subcategory: '', brand: '',
   compatibleModels: [], partType: '', condition: 'NEW', description: '',
-  buyingPrice: '', sellingPrice: '', quantity: 0, minStock: 5,
+  buyingPrice: '', buyingPriceAED: '', sellingPrice: '', quantity: 0, minStock: 5,
   supplier: '', location: '', image: '', status: 'ACTIVE'
 }
 
@@ -17,6 +18,7 @@ export default function ProductForm({ show, onClose, onSaved, product }) {
   const [suppliers, setSuppliers] = useState([])
   const [brands, setBrands] = useState([])
   const [models, setModels] = useState([])
+  const [rates, setRates] = useState({ aedToUsd: 0.2723, usdToRwf: 1330 })
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -41,12 +43,14 @@ export default function ProductForm({ show, onClose, onSaved, product }) {
       api.get('/categories'),
       api.get('/suppliers'),
       api.get('/brands'),
-      api.get('/phone-models')
-    ]).then(([catRes, supRes, brandRes, modelRes]) => {
+      api.get('/phone-models'),
+      api.get('/exchange-rates')
+    ]).then(([catRes, supRes, brandRes, modelRes, ratesRes]) => {
       setCategories(catRes.data.data)
       setSuppliers(supRes.data.data)
       setBrands(brandRes.data.data)
       setModels(modelRes.data.data)
+      setRates(extractRates(ratesRes.data.data))
     }).catch(() => {})
   }, [show, product])
 
@@ -64,6 +68,8 @@ export default function ProductForm({ show, onClose, onSaved, product }) {
   const submit = async (e) => {
     e.preventDefault()
     setError('')
+    const aed = Number(form.buyingPriceAED) || 0
+    if (!isEdit && !aed) return setError('Enter the Buy Price Per Unit in AED.')
     setSaving(true)
     try {
       const payload = {
@@ -74,7 +80,8 @@ export default function ProductForm({ show, onClose, onSaved, product }) {
         supplier: form.supplier || null,
         compatibleModels: form.compatibleModels || [],
         quantity: Number(form.quantity) || 0,
-        buyingPrice: Number(form.buyingPrice) || 0,
+        buyingPriceAED: aed,
+        buyingPrice: aed > 0 ? undefined : Number(form.buyingPrice) || 0,
         sellingPrice: Number(form.sellingPrice) || 0,
         minStock: Number(form.minStock) || 0
       }
@@ -90,6 +97,10 @@ export default function ProductForm({ show, onClose, onSaved, product }) {
       setSaving(false)
     }
   }
+
+  const converted = convertAED(form.buyingPriceAED, rates)
+  const storedRwf = isEdit && product?.buyingPriceAED > 0 ? Number(product.buyingPrice) : 0
+  const finalRwf = isEdit && Number(form.buyingPriceAED) === Number(product?.buyingPriceAED || 0) && storedRwf > 0 ? storedRwf : converted.rwf
 
   const parentCategories = categories.filter((c) => !c.parent)
 
@@ -151,11 +162,48 @@ export default function ProductForm({ show, onClose, onSaved, product }) {
               </Form.Group>
             </Col>
 
-            <Col md={3}>
+            <Col md={12}>
               <Form.Group>
-                <Form.Label>Buying Price *</Form.Label>
-                <Form.Control type="number" min="0" step="0.01" value={form.buyingPrice} onChange={set('buyingPrice')} required />
+                <Form.Label>Buy Price Per Unit</Form.Label>
+                <InputGroup>
+                  <InputGroup.Text>AED (UAE Dirham)</InputGroup.Text>
+                  <Form.Control
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.buyingPriceAED}
+                    onChange={(e) => setForm((f) => ({ ...f, buyingPriceAED: e.target.value }))}
+                    required={!isEdit}
+                    placeholder="e.g. 500"
+                  />
+                </InputGroup>
+                <Form.Text muted>Original purchase price paid to the UAE supplier in Dirhams.</Form.Text>
               </Form.Group>
+              {finalRwf > 0 && (
+                <div className="mt-2 rounded small" style={{ background: '#f4f7fb', border: '1px solid #e2e8f0' }}>
+                  <div className="d-flex justify-content-between px-3 py-1">
+                    <span className="text-muted">Equivalent USD</span>
+                    <span className="fw-semibold">${converted.usd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="d-flex justify-content-between px-3 py-1 border-top">
+                    <span className="text-muted">Equivalent RWF</span>
+                    <span className="fw-semibold">{converted.rwf.toLocaleString()} RWF</span>
+                  </div>
+                  {converted.rwf > 0 && Number(form.quantity) > 0 && !isEdit && (
+                    <div className="d-flex justify-content-between px-3 py-1 border-top">
+                      <span className="text-muted">Total Buying Cost ({Number(form.quantity)} × {finalRwf.toLocaleString()} RWF)</span>
+                      <span className="fw-semibold">{(finalRwf * Number(form.quantity)).toLocaleString()} RWF</span>
+                    </div>
+                  )}
+                  <div className="d-flex justify-content-between px-3 py-1 border-top" style={{ background: '#eef6ef' }}>
+                    <span className="text-muted fw-semibold">FINAL BUYING PRICE{isEdit ? ' (per unit)' : ''}</span>
+                    <span className="fw-bold text-success">{finalRwf.toLocaleString()} RWF</span>
+                  </div>
+                  {isEdit && Number(form.buyingPriceAED) !== Number(product?.buyingPriceAED || 0) && (
+                    <div className="px-3 py-1 border-top text-muted">Changing the AED price applies the current exchange rate and updates the final buying price.</div>
+                  )}
+                </div>
+              )}
             </Col>
             <Col md={3}>
               <Form.Group>
