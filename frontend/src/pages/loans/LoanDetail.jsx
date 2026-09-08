@@ -36,7 +36,7 @@ export default function LoanDetail() {
           email: c.companyEmail || '',
           address: c.companyAddress || 'Kigali, Rwanda',
           tin: c.companyTin || '',
-          logoUrl: c.logoUrl || '/company-logo.png',
+          logoUrl: c.logoUrl || '/logo.png',
           footerNote: c.invoiceFooterNote || 'Thank you for your business!'
         })
       }).catch(() => {})

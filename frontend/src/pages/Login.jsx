@@ -318,7 +318,7 @@ export default function Login() {
         {/* Right Side: Animated Logo & Info */}
         <div className="login-visual-side">
           <div className="logo-display-container">
-            <img src="/company-logo.png" alt="logo" className="visual-logo" />
+            <img src="/logo.png" alt="logo" className="visual-logo" />
           </div>
           <h4 className="visual-title">{t('appName')}</h4>
           <p className="visual-subtitle">{t('loginSubtitle')}</p>

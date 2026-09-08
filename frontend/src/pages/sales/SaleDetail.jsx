@@ -30,7 +30,7 @@ export default function SaleDetail() {
         phone: c.companyPhone || c.phone || '',
         email: c.companyEmail || c.email || '',
         tin: c.companyTin || '',
-        logoUrl: c.logoUrl || '/company-logo.png',
+        logoUrl: c.logoUrl || '/logo.png',
         invoiceFooterNote: c.invoiceFooterNote || 'Thank you for your business!'
       })
     }).catch(() => navigate('/sales'))

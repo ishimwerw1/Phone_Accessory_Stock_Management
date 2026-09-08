@@ -32,7 +32,6 @@ import SupplierPayments from './pages/supplier-payments/SupplierPayments'
 import Orders from './pages/orders/Orders'
 
 import ReportsIndex from './pages/reports/ReportsIndex'
-import ReportsIndex from './pages/reports/ReportsIndex'
 import ReportsSales from './pages/reports/SalesReport'
 import ReportsStock from './pages/reports/StockReport'
 import ReportsCustomers from './pages/reports/CustomersReport'

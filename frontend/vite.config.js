@@ -9,7 +9,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['company-logo.png', 'logo.svg', 'favicon.svg', 'icons.svg', 'favicon.ico', 'favicon-32x32.png'],
+      includeAssets: ['logo.png', 'logo.svg', 'favicon.svg', 'icons.svg', 'favicon.ico', 'favicon-32x32.png'],
       manifest: {
         name: 'Nsenga Legacy Electronic',
         short_name: 'Nsenga Legacy Electronic',
@@ -36,7 +36,7 @@ export default defineConfig({
             purpose: 'any maskable',
           },
           {
-            src: '/company-logo.png',
+            src: '/logo.png',
             sizes: 'any',
             type: 'image/png',
           },

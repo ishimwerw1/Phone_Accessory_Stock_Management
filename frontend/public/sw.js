@@ -8,7 +8,7 @@ const CORE_ASSETS = [
   '/index.html',
   '/offline.html',
   '/manifest.webmanifest',
-  '/company-logo.png',
+  '/logo.png',
   '/logo.svg',
   '/favicon.svg',
   '/pwa-192x192.png',
