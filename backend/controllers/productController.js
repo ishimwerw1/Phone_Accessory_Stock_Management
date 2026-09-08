@@ -2,7 +2,7 @@ const { Product, StockTransaction, Sale, Supplier, Brand, PhoneModel, Category }
 const { success, error, asyncHandler } = require('../utils/response');
 const { audit } = require('../services/auditService');
 const { nextNumber } = require('../utils/helpers');
-const { getExchangeRates, convertAEDtoRWF } = require('../utils/exchangeRate');
+const { convertAEDPrice } = require('../utils/exchangeRate');
 
 const populate = [
   { path: 'category', select: 'name parent' },
@@ -120,10 +120,7 @@ exports.create = asyncHandler(async (req, res) => {
 
   const body = { ...req.body };
   if (Number(body.buyingPriceAED) > 0) {
-    const rates = await getExchangeRates();
-    const { rwf } = convertAEDtoRWF(body.buyingPriceAED, rates);
-    body.buyingPrice = rwf;
-    body.exchangeRateSnapshot = { aedToUsd: rates.aedToUsd, usdToRwf: rates.usdToRwf };
+    Object.assign(body, await convertAEDPrice(body.buyingPriceAED));
   }
 
   const product = await Product.create({ ...body, sku });
@@ -163,15 +160,27 @@ exports.update = asyncHandler(async (req, res) => {
     delete req.body.sku;
   }
 
-  if (Number(req.body.buyingPriceAED) > 0) {
-    if (Number(req.body.buyingPriceAED) !== Number(product.buyingPriceAED || 0)) {
-      const rates = await getExchangeRates();
-      const { rwf } = convertAEDtoRWF(req.body.buyingPriceAED, rates);
-      req.body.buyingPrice = rwf;
-      req.body.exchangeRateSnapshot = { aedToUsd: rates.aedToUsd, usdToRwf: rates.usdToRwf };
+  const aed = Number(req.body.buyingPriceAED) || 0;
+  if (aed > 0) {
+    if (aed !== Number(product.buyingPriceAED || 0)) {
+      Object.assign(req.body, await convertAEDPrice(aed));
     } else {
+      const snap = product.exchangeRateSnapshot || {};
+      const aedToUsdRate = Number(snap.aedToUsd) || 0;
+      const aedToRwfRate = Number(snap.aedToRwf) ||
+        (aedToUsdRate && Number(snap.usdToRwf) ? aedToUsdRate * Number(snap.usdToRwf) : 0);
+      const original = Number(product.buyingPriceOriginal) || Number(product.buyingPriceAED) || aed;
       req.body.buyingPrice = product.buyingPrice;
-      req.body.exchangeRateSnapshot = product.exchangeRateSnapshot || { aedToUsd: 0, usdToRwf: 0 };
+      req.body.buyingPriceAED = original;
+      req.body.buyingPriceOriginal = original;
+      req.body.buyingCurrency = product.buyingCurrency || 'AED';
+      req.body.buyingPriceUSD = Number(product.buyingPriceUSD) ||
+        (aedToUsdRate ? Math.round(original * aedToUsdRate * 100) / 100 : 0);
+      req.body.buyingPriceRWF = product.buyingPrice;
+      req.body.aedToUsdRate = aedToUsdRate;
+      req.body.aedToRwfRate = aedToRwfRate;
+      req.body.exchangeRateUpdatedAt = product.exchangeRateUpdatedAt || snap.updatedAt || null;
+      req.body.exchangeRateSnapshot = product.exchangeRateSnapshot || { aedToUsd: 0, aedToRwf: 0, usdToRwf: 0 };
     }
   }
 

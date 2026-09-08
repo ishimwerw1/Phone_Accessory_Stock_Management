@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Card, Row, Col, Form, Button, Alert, Badge, InputGroup } from 'react-bootstrap'
 import api, { getError } from '../../api/client'
-import { extractRates, convertAED } from '../../utils/currency'
+import { extractRates } from '../../utils/currency'
+import ExchangeRateCard from '../../components/common/ExchangeRateCard'
 
 export default function StockIn() {
   const [products, setProducts] = useState([])
   const [productId, setProductId] = useState('')
   const [quantity, setQuantity] = useState('')
   const [buyingPriceAED, setBuyingPriceAED] = useState('')
-  const [rates, setRates] = useState({ aedToUsd: 0.2723, usdToRwf: 1330 })
+  const [rates, setRates] = useState(null)
+  const [ratesError, setRatesError] = useState('')
   const [reference, setReference] = useState('')
   const [reason, setReason] = useState('')
   const [error, setError] = useState('')
@@ -20,12 +22,11 @@ export default function StockIn() {
       .then((r) => setProducts(r.data.data.products || []))
       .catch((e) => setError(getError(e)))
     api.get('/exchange-rates')
-      .then((r) => setRates(extractRates(r.data.data)))
-      .catch(() => {})
+      .then((r) => { setRates(extractRates(r.data.data)); setRatesError('') })
+      .catch(() => setRatesError('Could not load the latest exchange rate.'))
   }, [])
 
   const selected = products.find((p) => p._id === productId)
-  const converted = convertAED(buyingPriceAED, rates)
 
   const submit = async (e) => {
     e.preventDefault()
@@ -114,28 +115,8 @@ export default function StockIn() {
                 </Col>
               </Row>
 
-              {converted.rwf > 0 && (
-                <div className="mt-2 rounded small" style={{ background: '#f4f7fb', border: '1px solid #e2e8f0' }}>
-                  <div className="d-flex justify-content-between px-3 py-1">
-                    <span className="text-muted">Equivalent USD</span>
-                    <span className="fw-semibold">${converted.usd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  </div>
-                  <div className="d-flex justify-content-between px-3 py-1 border-top">
-                    <span className="text-muted">Equivalent RWF (per unit)</span>
-                    <span className="fw-semibold">{converted.rwf.toLocaleString()} RWF</span>
-                  </div>
-                  {converted.rwf > 0 && Number(quantity) > 0 && (
-                    <div className="d-flex justify-content-between px-3 py-1 border-top">
-                      <span className="text-muted">Total Buying Cost ({Number(quantity)} × {converted.rwf.toLocaleString()} RWF)</span>
-                      <span className="fw-semibold">{(converted.rwf * Number(quantity)).toLocaleString()} RWF</span>
-                    </div>
-                  )}
-                  <div className="d-flex justify-content-between px-3 py-1 border-top" style={{ background: '#eef6ef' }}>
-                    <span className="text-muted fw-semibold">FINAL BUYING PRICE (per unit)</span>
-                    <span className="fw-bold text-success">{converted.rwf.toLocaleString()} RWF</span>
-                  </div>
-                </div>
-              )}
+              {ratesError && <Alert variant="warning" className="py-1 px-2 small mt-2 mb-0"><i className="bi bi-exclamation-triangle me-1" />{ratesError}</Alert>}
+              <ExchangeRateCard aed={buyingPriceAED} rates={rates} quantity={quantity} showTotal />
 
               <Form.Group className="mt-3">
                 <Form.Label>Reason / Notes</Form.Label>

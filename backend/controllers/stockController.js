@@ -3,7 +3,7 @@ const { success, error, asyncHandler } = require('../utils/response');
 const { nextNumber } = require('../utils/helpers');
 const { audit } = require('../services/auditService');
 const { notify, checkLowStock } = require('../services/notificationService');
-const { getExchangeRates, convertAEDtoRWF } = require('../utils/exchangeRate');
+const { convertAEDPrice } = require('../utils/exchangeRate');
 
 const findProduct = async (id) => {
   const p = await Product.findById(id);
@@ -19,11 +19,7 @@ exports.stockIn = asyncHandler(async (req, res) => {
   const prevQty = product.quantity;
   product.quantity = prevQty + qty;
   if (Number(buyingPriceAED) > 0) {
-    const rates = await getExchangeRates();
-    const { rwf } = convertAEDtoRWF(buyingPriceAED, rates);
-    product.buyingPrice = rwf;
-    product.buyingPriceAED = Number(buyingPriceAED);
-    product.exchangeRateSnapshot = { aedToUsd: rates.aedToUsd, usdToRwf: rates.usdToRwf };
+    Object.assign(product, await convertAEDPrice(buyingPriceAED));
   } else if (buyingPrice) {
     product.buyingPrice = Number(buyingPrice);
   }

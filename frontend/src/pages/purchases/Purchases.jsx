@@ -6,7 +6,8 @@ import StatusBadge from '../../components/common/StatusBadge'
 import ConfirmDialog from '../../components/common/ConfirmDialog'
 import { useAuth } from '../../context/AuthContext'
 import { formatMoney } from '../../context/LanguageContext'
-import { extractRates, convertAED } from '../../utils/currency'
+import { extractRates } from '../../utils/currency'
+import ExchangeRateCard from '../../components/common/ExchangeRateCard'
 
 export default function Purchases() {
   const [purchases, setPurchases] = useState([])
@@ -33,7 +34,8 @@ export default function Purchases() {
   const [newSupplierForm, setNewSupplierForm] = useState({ name: '', phone: '' })
   const [showNewProduct, setShowNewProduct] = useState(false)
   const [newProductForm, setNewProductForm] = useState({ name: '', buyingPriceAED: '', sellingPrice: '' })
-  const [rates, setRates] = useState({ aedToUsd: 0.2723, usdToRwf: 1330 })
+  const [rates, setRates] = useState(null)
+  const [ratesError, setRatesError] = useState('')
   const [quickSaving, setQuickSaving] = useState(false)
   const { hasPermission } = useAuth()
 
@@ -69,7 +71,9 @@ export default function Purchases() {
       const prodRes = pRes.data.data
       setProducts(Array.isArray(prodRes) ? prodRes : (Array.isArray(prodRes?.products) ? prodRes.products : []))
       setRates(extractRates(rateRes.data.data))
-    } catch {}
+    } catch {
+      setRatesError('Could not load the latest exchange rate.')
+    }
   }
 
   const openForm = () => {
@@ -524,18 +528,8 @@ export default function Purchases() {
               </Form.Group>
             </Col>
           </Row>
-          {convertAED(newProductForm.buyingPriceAED, rates).rwf > 0 && (
-            <div className="small mt-2 rounded" style={{ background: '#f4f7fb', border: '1px solid #e2e8f0' }}>
-              <div className="d-flex justify-content-between px-3 py-1">
-                <span className="text-muted">Equivalent USD</span>
-                <span className="fw-semibold">${convertAED(newProductForm.buyingPriceAED, rates).usd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-              </div>
-              <div className="d-flex justify-content-between px-3 py-1 border-top" style={{ background: '#eef6ef' }}>
-                <span className="text-muted fw-semibold">Final Buying Price</span>
-                <span className="fw-bold text-success">{convertAED(newProductForm.buyingPriceAED, rates).rwf.toLocaleString()} RWF</span>
-              </div>
-            </div>
-          )}
+          {ratesError && <Alert variant="warning" className="py-1 px-2 small mt-2 mb-0"><i className="bi bi-exclamation-triangle me-1" />{ratesError}</Alert>}
+          <ExchangeRateCard aed={newProductForm.buyingPriceAED} rates={rates} />
           <p className="small text-muted mt-2 mb-0"><i className="bi bi-info-circle me-1" />A SKU is generated automatically.</p>
         </Modal.Body>
         <Modal.Footer>

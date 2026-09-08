@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { Modal, Form, Row, Col, Button, Alert, InputGroup } from 'react-bootstrap'
 import api from '../../api/client'
 import { getError } from '../../api/client'
-import { extractRates, convertAED } from '../../utils/currency'
+import { extractRates } from '../../utils/currency'
+import ExchangeRateCard from '../../components/common/ExchangeRateCard'
 
 const empty = {
   name: '', sku: '', barcode: '', category: '', subcategory: '', brand: '',
@@ -18,13 +19,15 @@ export default function ProductForm({ show, onClose, onSaved, product }) {
   const [suppliers, setSuppliers] = useState([])
   const [brands, setBrands] = useState([])
   const [models, setModels] = useState([])
-  const [rates, setRates] = useState({ aedToUsd: 0.2723, usdToRwf: 1330 })
+  const [rates, setRates] = useState(null)
+  const [ratesError, setRatesError] = useState('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (!show) return
     setError('')
+    setRatesError('')
     if (product) {
       const { _id, image, createdAt, updatedAt, stockStatus, stockState, __v, ...rest } = product
       setForm({
@@ -43,15 +46,16 @@ export default function ProductForm({ show, onClose, onSaved, product }) {
       api.get('/categories'),
       api.get('/suppliers'),
       api.get('/brands'),
-      api.get('/phone-models'),
-      api.get('/exchange-rates')
-    ]).then(([catRes, supRes, brandRes, modelRes, ratesRes]) => {
+      api.get('/phone-models')
+    ]).then(([catRes, supRes, brandRes, modelRes]) => {
       setCategories(catRes.data.data)
       setSuppliers(supRes.data.data)
       setBrands(brandRes.data.data)
       setModels(modelRes.data.data)
-      setRates(extractRates(ratesRes.data.data))
     }).catch(() => {})
+    api.get('/exchange-rates')
+      .then((r) => { setRates(extractRates(r.data.data)); setRatesError('') })
+      .catch(() => setRatesError('Could not load the latest exchange rate.'))
   }, [show, product])
 
   const set = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }))
@@ -98,9 +102,17 @@ export default function ProductForm({ show, onClose, onSaved, product }) {
     }
   }
 
-  const converted = convertAED(form.buyingPriceAED, rates)
-  const storedRwf = isEdit && product?.buyingPriceAED > 0 ? Number(product.buyingPrice) : 0
-  const finalRwf = isEdit && Number(form.buyingPriceAED) === Number(product?.buyingPriceAED || 0) && storedRwf > 0 ? storedRwf : converted.rwf
+  const aedInput = Number(form.buyingPriceAED) || 0
+  const snapshot = product?.exchangeRateSnapshot || {}
+  const isPreserved = isEdit && aedInput > 0 && aedInput === Number(product?.buyingPriceAED || 0) && Number(snapshot.aedToRwf || snapshot.aedToUsd) > 0
+  const displayRates = isPreserved
+    ? {
+        ...(rates || {}),
+        ...extractRates(snapshot),
+        updatedAt: product?.exchangeRateUpdatedAt || snapshot.updatedAt || null,
+        provider: snapshot.provider || 'cached',
+      }
+    : (rates || {})
 
   const parentCategories = categories.filter((c) => !c.parent)
 
@@ -179,31 +191,14 @@ export default function ProductForm({ show, onClose, onSaved, product }) {
                 </InputGroup>
                 <Form.Text muted>Original purchase price paid to the UAE supplier in Dirhams.</Form.Text>
               </Form.Group>
-              {finalRwf > 0 && (
-                <div className="mt-2 rounded small" style={{ background: '#f4f7fb', border: '1px solid #e2e8f0' }}>
-                  <div className="d-flex justify-content-between px-3 py-1">
-                    <span className="text-muted">Equivalent USD</span>
-                    <span className="fw-semibold">${converted.usd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  </div>
-                  <div className="d-flex justify-content-between px-3 py-1 border-top">
-                    <span className="text-muted">Equivalent RWF</span>
-                    <span className="fw-semibold">{converted.rwf.toLocaleString()} RWF</span>
-                  </div>
-                  {converted.rwf > 0 && Number(form.quantity) > 0 && !isEdit && (
-                    <div className="d-flex justify-content-between px-3 py-1 border-top">
-                      <span className="text-muted">Total Buying Cost ({Number(form.quantity)} × {finalRwf.toLocaleString()} RWF)</span>
-                      <span className="fw-semibold">{(finalRwf * Number(form.quantity)).toLocaleString()} RWF</span>
-                    </div>
-                  )}
-                  <div className="d-flex justify-content-between px-3 py-1 border-top" style={{ background: '#eef6ef' }}>
-                    <span className="text-muted fw-semibold">FINAL BUYING PRICE{isEdit ? ' (per unit)' : ''}</span>
-                    <span className="fw-bold text-success">{finalRwf.toLocaleString()} RWF</span>
-                  </div>
-                  {isEdit && Number(form.buyingPriceAED) !== Number(product?.buyingPriceAED || 0) && (
-                    <div className="px-3 py-1 border-top text-muted">Changing the AED price applies the current exchange rate and updates the final buying price.</div>
-                  )}
-                </div>
-              )}
+              {ratesError && <Alert variant="warning" className="py-1 px-2 small mt-2 mb-0"><i className="bi bi-exclamation-triangle me-1" />{ratesError} Reload the page or refresh the exchange rates in Settings before saving.</Alert>}
+              <ExchangeRateCard
+                aed={form.buyingPriceAED}
+                rates={displayRates}
+                quantity={form.quantity}
+                showTotal={!isEdit}
+                note={isEdit && !isPreserved && aedInput > 0 ? 'Changing the AED price applies the current exchange rate and updates the final buying price.' : null}
+              />
             </Col>
             <Col md={3}>
               <Form.Group>

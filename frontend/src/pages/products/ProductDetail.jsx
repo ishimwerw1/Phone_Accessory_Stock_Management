@@ -4,6 +4,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import api from '../../api/client'
 import StatusBadge from '../../components/common/StatusBadge'
 import Loading from '../../components/common/Loading'
+import { fmtDate } from '../../utils/currency'
 
 export default function ProductDetail() {
   const { id } = useParams()
@@ -19,6 +20,13 @@ export default function ProductDetail() {
   }, [id, navigate])
 
   if (!product) return <Loading full />
+
+  const snap = product.exchangeRateSnapshot || {}
+  const aed = Number(product.buyingPriceOriginal) || Number(product.buyingPriceAED) || 0
+  const aedToUsd = Number(product.aedToUsdRate) || Number(snap.aedToUsd) || 0
+  const aedToRwf = Number(product.aedToRwfRate) || (aedToUsd && Number(snap.usdToRwf) ? aedToUsd * Number(snap.usdToRwf) : 0)
+  const usd = Number(product.buyingPriceUSD) || (aed ? Math.round(aed * aedToUsd * 100) / 100 : 0)
+  const rateUpdated = product.exchangeRateUpdatedAt || snap.updatedAt
 
   const Info = ({ label, value }) => (
     <div className="d-flex justify-content-between border-bottom py-2">
@@ -68,12 +76,14 @@ export default function ProductDetail() {
               <Info label="Part Type" value={product.partType} />
               <Info label="Condition" value={product.condition} />
               <Info label="Compatible Models" value={(product.compatibleModels || []).map((m) => m?.name).join(', ')} />
-              <Info label="Buying Price (AED)" value={product.buyingPriceAED > 0 ? `${Number(product.buyingPriceAED).toLocaleString()} AED` : null} />
-              {product.buyingPriceAED > 0 && (
-                <div className="small text-muted text-end">
-                  <div>USD: ${(Number(product.buyingPriceAED) * (product.exchangeRateSnapshot?.aedToUsd || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                  <div>RWF: {Number(product.buyingPrice).toLocaleString()} RWF</div>
-                </div>
+              {aed > 0 && (
+                <>
+                  <Info label="Original Purchase Price" value={`${aed.toLocaleString()} AED`} />
+                  <Info label="Equivalent USD" value={`$${usd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} />
+                  <Info label="Equivalent RWF" value={`${Number(product.buyingPrice).toLocaleString()} RWF`} />
+                  <Info label="Rate Used" value={aedToRwf > 0 ? `1 AED = ${aedToRwf.toLocaleString(undefined, { maximumFractionDigits: 3 })} RWF` : null} />
+                  <Info label="Rate Last Updated" value={fmtDate(rateUpdated)} />
+                </>
               )}
               <Info label="Final Buying Price" value={`${Number(product.buyingPrice).toLocaleString()} RWF`} />
               <Info label="Selling Price" value={`${Number(product.sellingPrice).toLocaleString()} RWF`} />
