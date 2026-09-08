@@ -41,9 +41,8 @@ export default function FinancialReport() {
       </Row>
 
       <Row className="g-3 mb-4">
-        <Col md={4}><StatCard icon="bi-cash-coin" label="Outstanding / Credit" value={formatMoney(t.outstanding || 0)} color="danger" sub="Unpaid balance on completed sales" /></Col>
-        <Col md={4}><StatCard icon="bi-box-arrow-down" label="Stock Received (qty)" value={(data.stockInQty || 0).toLocaleString()} color="primary" sub="Total units stocked in" /></Col>
-        <Col md={4}><StatCard icon="bi-check-circle" label="Avg. Sale Value" value={formatMoney((t.count || 0) > 0 ? t.sales / t.count : 0)} color="success" /></Col>
+        <Col md={6}><StatCard icon="bi-cash-coin" label="Outstanding / Credit" value={formatMoney(t.outstanding || 0)} color="danger" sub="Unpaid balance on completed sales" /></Col>
+        <Col md={6}><StatCard icon="bi-box-arrow-down" label="Stock Received (qty)" value={(data.stockInQty || 0).toLocaleString()} color="primary" sub="Total units stocked in" /></Col>
       </Row>
 
       <Row className="g-3">

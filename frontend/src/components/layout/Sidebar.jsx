@@ -97,14 +97,7 @@ export default function Sidebar({ open, onClose }) {
 
         {hasPermission('reports.read') && (
           <>
-            <GroupLabel>{t('reports')}</GroupLabel>
-            <Item to="/reports/sales" icon="bi-graph-up-arrow" labelKey="salesReports" />
-            <Item to="/reports/stock" icon="bi-boxes" labelKey="stockReports" />
-            <Item to="/reports/customers" icon="bi-person-lines-fill" labelKey="customerReports" />
-            <Item to="/reports/loans" icon="bi-credit-card-2-front" labelKey="loanReports" />
-            <Item to="/reports/financial" icon="bi-bank" labelKey="financialReports" />
-            <Item to="/reports/expenses" icon="bi-wallet2" labelKey="expenseReports" />
-            <Item to="/reports/purchases" icon="bi-bag" labelKey="purchaseReports" />
+            <Item to="/reports" icon="bi-graph-up-arrow" labelKey="reports" />
           </>
         )}
       </Nav>

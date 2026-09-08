@@ -62,7 +62,6 @@ export default function SalesReport() {
 
   if (!data) return <Loading full />
   const s = data.totals || { total: 0, paid: 0, cost: 0, count: 0, profit: 0, outstanding: 0 }
-  const avgSale = s.count > 0 ? s.total / s.count : 0
   const byDate = data.byDate || []
   const byMethod = data.byMethod || []
   const byProduct = data.byProduct || []
@@ -100,18 +99,7 @@ export default function SalesReport() {
       </Row>
 
       <Row className="g-3 mb-3">
-        <Col md={3}>
-          <Card className="h-100" style={{ border: 'none', boxShadow: '0 1px 8px rgba(0,0,0,.08)', borderRadius: 12 }}>
-            <Card.Body className="py-3 px-3">
-              <div className="d-flex align-items-center gap-2 mb-1">
-                <i className="bi bi-receipt-cutoff" style={{ color: '#1a6fb5', fontSize: '0.95rem' }} />
-                <span className="text-muted" style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '.04em' }}>Avg. Sale Value</span>
-              </div>
-              <div className="fw-bold" style={{ color: '#0d3b66', fontSize: '1.15rem' }}>{formatMoney(avgSale)}</div>
-            </Card.Body>
-          </Card>
-        </Col>
-        <Col md={3}>
+        <Col md={4}>
           <Card className="h-100" style={{ border: 'none', boxShadow: '0 1px 8px rgba(0,0,0,.08)', borderRadius: 12 }}>
             <Card.Body className="py-3 px-3">
               <div className="d-flex align-items-center gap-2 mb-1">
@@ -122,7 +110,7 @@ export default function SalesReport() {
             </Card.Body>
           </Card>
         </Col>
-        <Col md={3}>
+        <Col md={4}>
           <Card className="h-100" style={{ border: 'none', boxShadow: '0 1px 8px rgba(0,0,0,.08)', borderRadius: 12 }}>
             <Card.Body className="py-3 px-3">
               <div className="d-flex align-items-center gap-2 mb-1">
@@ -133,7 +121,7 @@ export default function SalesReport() {
             </Card.Body>
           </Card>
         </Col>
-        <Col md={3}>
+        <Col md={4}>
           <Card className="h-100" style={{ border: 'none', boxShadow: '0 1px 8px rgba(0,0,0,.08)', borderRadius: 12 }}>
             <Card.Body className="py-3 px-3">
               <div className="d-flex align-items-center gap-2 mb-1">

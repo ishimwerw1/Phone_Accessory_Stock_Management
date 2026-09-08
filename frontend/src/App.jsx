@@ -31,6 +31,8 @@ import Purchases from './pages/purchases/Purchases'
 import SupplierPayments from './pages/supplier-payments/SupplierPayments'
 import Orders from './pages/orders/Orders'
 
+import ReportsIndex from './pages/reports/ReportsIndex'
+import ReportsIndex from './pages/reports/ReportsIndex'
 import ReportsSales from './pages/reports/SalesReport'
 import ReportsStock from './pages/reports/StockReport'
 import ReportsCustomers from './pages/reports/CustomersReport'
@@ -88,6 +90,7 @@ export default function App() {
               <Route path="/supplier-payments" element={<Protected permission="purchases.read"><SupplierPayments /></Protected>} />
               <Route path="/orders" element={<Protected permission="orders.read"><Orders /></Protected>} />
 
+              <Route path="/reports" element={<Protected permission="reports.read"><ReportsIndex /></Protected>} />
               <Route path="/reports/sales" element={<Protected permission="reports.read"><ReportsSales /></Protected>} />
               <Route path="/reports/stock" element={<Protected permission="reports.read"><ReportsStock /></Protected>} />
               <Route path="/reports/customers" element={<Protected permission="reports.read"><ReportsCustomers /></Protected>} />
