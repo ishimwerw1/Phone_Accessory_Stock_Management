@@ -174,22 +174,33 @@ const createSale = async (payload, user) => {
 };
 
 const createOnDemandSale = async (payload, user) => {
-  const { items, supplier: supplierId, discount = 0, paymentMethod = 'CASH', amountPaid, dueDate, reference, notes, customer: customerPayload } = payload;
+  const { items, supplier: globalSupplierId, discount = 0, paymentMethod = 'CASH', amountPaid, dueDate, reference, notes, customer: customerPayload } = payload;
   if (!items || !items.length) throw Object.assign(new Error('Sale must contain at least one product'), { status: 400 });
-  if (!supplierId) throw Object.assign(new Error('A supplier is required for on-demand sourcing'), { status: 400 });
   if (!['CASH', 'MOMO', 'BANK', 'LOAN'].includes(paymentMethod)) {
     throw Object.assign(new Error('Invalid payment method'), { status: 400 });
   }
   const { Supplier } = require('../models');
-  const supplier = await Supplier.findById(supplierId);
-  if (!supplier) throw Object.assign(new Error('Supplier not found'), { status: 404 });
+
+  const supplierIds = new Set();
+  for (const it of items) {
+    const sid = it.supplierId || globalSupplierId;
+    if (sid) supplierIds.add(String(sid));
+  }
+  if (supplierIds.size === 0) throw Object.assign(new Error('At least one supplier is required for on-demand sourcing'), { status: 400 });
+
+  const supplierMap = new Map();
+  for (const sid of supplierIds) {
+    const s = await Supplier.findById(sid);
+    if (!s) throw Object.assign(new Error(`Supplier not found: ${sid}`), { status: 404 });
+    supplierMap.set(sid, s);
+  }
 
   return withTransaction(async (session) => {
     const saleNumber = await nextNumber('SALE', opt(session));
     const paymentNumber = await nextNumber('PAY', opt(session));
     const loanNumber = await nextNumber('LN', opt(session));
     const loanPaymentNumber = await nextNumber('PAY', opt(session));
-    const purchaseNumber = await nextNumber('PUR', opt(session));
+
     let customer = null;
     if (customerPayload) {
       if (customerPayload._id) {
@@ -204,9 +215,10 @@ const createOnDemandSale = async (payload, user) => {
     }
 
     const saleItems = [];
-    const purchaseItems = [];
     let subtotal = 0;
-    let supplierCost = 0;
+    let totalSupplierCost = 0;
+
+    const groupedBySupplier = {};
     for (const it of items) {
       const product = await Product.findById(it.productId, null, opt(session));
       if (!product) throw Object.assign(new Error(`Product not found: ${it.productId}`), { status: 404 });
@@ -215,10 +227,15 @@ const createOnDemandSale = async (payload, user) => {
       const buyingPrice = Number(it.buyingPrice ?? product.buyingPrice ?? 0);
       if (!qty || qty <= 0) throw Object.assign(new Error(`Invalid quantity for ${product.name}`), { status: 400 });
       if (price < 0) throw Object.assign(new Error(`Invalid selling price for ${product.name}`), { status: 400 });
+
+      const sid = String(it.supplierId || globalSupplierId);
+      if (!groupedBySupplier[sid]) groupedBySupplier[sid] = [];
+
       const itemSubtotal = qty * price;
       const itemCost = qty * buyingPrice;
       subtotal += itemSubtotal;
-      supplierCost += itemCost;
+      totalSupplierCost += itemCost;
+
       saleItems.push({
         product: product._id,
         name: product.name,
@@ -232,7 +249,8 @@ const createOnDemandSale = async (payload, user) => {
         subtotal: itemSubtotal,
         cost: buyingPrice,
       });
-      purchaseItems.push({
+
+      groupedBySupplier[sid].push({
         product: product._id,
         productName: product.name,
         sku: product.sku,
@@ -261,26 +279,36 @@ const createOnDemandSale = async (payload, user) => {
       outstanding,
       reference,
       source: 'ON_DEMAND',
-      notes: notes || `On-demand purchase — sourced from ${supplier.name}`,
+      notes: notes || `On-demand purchase — ${Object.keys(groupedBySupplier).length} supplier(s)`,
     }], opt(session));
 
-    const [purchase] = await Purchase.create([{
-      purchaseNumber,
-      supplier: supplier._id,
-      supplierName: supplier.name,
-      supplierPhone: supplier.phone,
-      items: purchaseItems,
-      totalAmount: supplierCost,
-      paymentMethod: 'CASH',
-      paymentStatus: 'UNPAID',
-      amountPaid: 0,
-      remainingAmount: supplierCost,
-      status: 'RECEIVED',
-      type: 'ON_DEMAND',
-      sale: sale._id,
-      notes: notes || `On-demand sourcing for sale ${saleNumber}`,
-      createdBy: user._id,
-    }], opt(session));
+    const purchases = [];
+    for (const [sid, purItems] of Object.entries(groupedBySupplier)) {
+      const sup = supplierMap.get(sid);
+      const purNumber = await nextNumber('PUR', opt(session));
+      const purTotal = purItems.reduce((s, i) => s + i.subtotal, 0);
+      const [purchase] = await Purchase.create([{
+        purchaseNumber: purNumber,
+        supplier: sup._id,
+        supplierName: sup.name,
+        supplierPhone: sup.phone,
+        items: purItems,
+        totalAmount: purTotal,
+        paymentMethod: 'CASH',
+        paymentStatus: 'UNPAID',
+        amountPaid: 0,
+        remainingAmount: purTotal,
+        status: 'RECEIVED',
+        type: 'ON_DEMAND',
+        sale: sale._id,
+        notes: notes || `On-demand sourcing for sale ${saleNumber} — ${sup.name}`,
+        createdBy: user._id,
+      }], opt(session));
+      purchases.push(purchase);
+      await audit({ user }, 'PURCHASE_CREATED', 'Purchase', purchase._id, {
+        purchaseNumber: purNumber, supplier: sup.name, totalAmount: purTotal, type: 'ON_DEMAND', saleNumber,
+      });
+    }
 
     let payment = null;
     if (paid > 0) {
@@ -327,18 +355,16 @@ const createOnDemandSale = async (payload, user) => {
     }
 
     await audit({ user }, 'SALE_CREATED', 'Sale', sale._id, {
-      saleNumber, total, paid, paymentMethod, onDemand: true, purchaseNumber,
+      saleNumber, total, paid, paymentMethod, onDemand: true,
+      purchases: purchases.map((p) => p.purchaseNumber),
     });
-    await audit({ user }, 'PURCHASE_CREATED', 'Purchase', purchase._id, {
-      purchaseNumber, supplier: supplier.name, totalAmount: supplierCost, type: 'ON_DEMAND', saleNumber,
-    });
-    await notify('NEW_SALE', `On-demand sale ${saleNumber} — ${saleItems.length} items, total ${total} RWF`, `Ugurisha ${saleNumber} — byose ${total} RWF`, { sale: sale._id, loan: loan?._id, purchase: purchase._id });
+    await notify('NEW_SALE', `On-demand sale ${saleNumber} — ${saleItems.length} items, total ${total} RWF`, `Ugurisha ${saleNumber} — byose ${total} RWF`, { sale: sale._id, loan: loan?._id });
 
     return {
-      sale, purchase, payment, loan,
-      profit: total - supplierCost,
+      sale, purchases, payment, loan,
+      profit: total - totalSupplierCost,
       customerPayment: total,
-      supplierAmount: supplierCost,
+      supplierAmount: totalSupplierCost,
     };
   });
 };

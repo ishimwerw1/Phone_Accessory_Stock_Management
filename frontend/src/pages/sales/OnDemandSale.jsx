@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Card, Row, Col, Form, Button, InputGroup, ListGroup, Alert, Modal } from 'react-bootstrap'
+import { Card, Row, Col, Form, Button, InputGroup, ListGroup, Alert, Modal, Badge } from 'react-bootstrap'
 import { useNavigate } from 'react-router-dom'
 import api, { getError } from '../../api/client'
 import { formatMoney } from '../../context/LanguageContext'
+import { extractRates } from '../../utils/currency'
+import ExchangeRateCard from '../../components/common/ExchangeRateCard'
 
 export default function OnDemandSale() {
   const navigate = useNavigate()
@@ -31,7 +33,16 @@ export default function OnDemandSale() {
   const [showAddSupplier, setShowAddSupplier] = useState(false)
   const [addingSupplier, setAddingSupplier] = useState(false)
   const [newSupplier, setNewSupplier] = useState({ name: '', phone: '', company: '' })
+
+  const [showAddProduct, setShowAddProduct] = useState(false)
+  const [addingProduct, setAddingProduct] = useState(false)
+  const [newProduct, setNewProduct] = useState({ name: '', sellingPrice: '', buyingPriceAED: '' })
+  const [duplicateWarning, setDuplicateWarning] = useState('')
+  const [dupProduct, setDupProduct] = useState(null)
+  const [rates, setRates] = useState(null)
+  const [ratesError, setRatesError] = useState('')
   const searchTimer = useRef(null)
+  const dupTimer = useRef(null)
 
   useEffect(() => {
     api.get('/products', { params: { limit: 200, status: 'ACTIVE' } })
@@ -40,6 +51,9 @@ export default function OnDemandSale() {
     api.get('/suppliers')
       .then((r) => setSuppliers(r.data.data))
       .catch(() => {})
+    api.get('/exchange-rates')
+      .then((r) => { setRates(extractRates(r.data.data)); setRatesError('') })
+      .catch(() => setRatesError('Could not load the latest exchange rate.'))
   }, [])
 
   useEffect(() => {
@@ -79,6 +93,11 @@ export default function OnDemandSale() {
   const balance = Math.max(0, total - paidAmount)
   const profit = total - supplierCost
 
+  const getEffectiveSupplier = (item) => {
+    if (item.supplierId) return suppliers.find((s) => s._id === item.supplierId)
+    return supplier
+  }
+
   const addToCart = (p) => {
     setError('')
     setCart((prev) => {
@@ -86,7 +105,15 @@ export default function OnDemandSale() {
       if (existing) {
         return prev.map((i) => i.productId === p._id ? { ...i, quantity: i.quantity + 1 } : i)
       }
-      return [...prev, { productId: p._id, productName: p.name, sku: p.sku, quantity: 1, price: p.sellingPrice, buyingPrice: p.buyingPrice || 0 }]
+      return [...prev, {
+        productId: p._id,
+        productName: p.name,
+        sku: p.sku,
+        quantity: 1,
+        price: p.sellingPrice,
+        buyingPrice: p.buyingPrice || 0,
+        supplierId: '',
+      }]
     })
   }
 
@@ -98,6 +125,9 @@ export default function OnDemandSale() {
   }
   const updateBuyingPrice = (productId, value) => {
     setCart((prev) => prev.map((i) => i.productId === productId ? { ...i, buyingPrice: Math.max(0, Number(value) || 0) } : i))
+  }
+  const updateItemSupplier = (productId, supplierId) => {
+    setCart((prev) => prev.map((i) => i.productId === productId ? { ...i, supplierId } : i))
   }
 
   const createSupplier = async () => {
@@ -111,6 +141,7 @@ export default function OnDemandSale() {
       setSupplierQuery(created.name)
       setNewSupplier({ name: '', phone: '', company: '' })
       setShowAddSupplier(false)
+      api.get('/suppliers').then((r) => setSuppliers(r.data.data)).catch(() => {})
     } catch (err) {
       setError(getError(err))
     } finally {
@@ -118,8 +149,56 @@ export default function OnDemandSale() {
     }
   }
 
+  const checkDuplicate = (name) => {
+    clearTimeout(dupTimer.current)
+    setDupProduct(null)
+    setDuplicateWarning('')
+    if (!name || name.trim().length < 2) return
+    dupTimer.current = setTimeout(async () => {
+      try {
+        const { data } = await api.get('/products/check-duplicate', { params: { name: name.trim() } })
+        if (data.data.exists) {
+          setDupProduct(data.data.product)
+          setDuplicateWarning(`A product named "${data.data.product.name}" already exists (${data.data.product.sku}, selling at ${formatMoney(data.data.product.sellingPrice)}).`)
+        }
+      } catch { /* silent */ }
+    }, 400)
+  }
+
+  const createProduct = async () => {
+    if (!newProduct.name.trim()) return setError('Product name is required')
+    if (dupProduct) {
+      addToCart({ _id: dupProduct._id, name: dupProduct.name, sku: dupProduct.sku, sellingPrice: dupProduct.sellingPrice, buyingPrice: dupProduct.sellingPrice })
+      setNewProduct({ name: '', sellingPrice: '', buyingPriceAED: '' })
+      setDupProduct(null)
+      setDuplicateWarning('')
+      setShowAddProduct(false)
+      return
+    }
+    setAddingProduct(true)
+    setError('')
+    try {
+      const { data } = await api.post('/products', {
+        name: newProduct.name.trim(),
+        sellingPrice: Number(newProduct.sellingPrice || 0),
+        buyingPriceAED: Number(newProduct.buyingPriceAED || 0),
+      })
+      const created = data.data
+      addToCart(created)
+      setNewProduct({ name: '', sellingPrice: '', buyingPriceAED: '' })
+      setDupProduct(null)
+      setDuplicateWarning('')
+      setShowAddProduct(false)
+      api.get('/products', { params: { limit: 200, status: 'ACTIVE' } }).then((r) => setProducts(r.data.data.products)).catch(() => {})
+    } catch (err) {
+      setError(getError(err))
+    } finally {
+      setAddingProduct(false)
+    }
+  }
+
   const submit = async () => {
-    if (!supplier) return setError('Please select a supplier for on-demand sourcing')
+    if (!supplier && !cart.some((i) => i.supplierId)) return setError('Please select a supplier (global or per-item) for on-demand sourcing')
     setSaving(true)
     setError('')
     try {
@@ -129,8 +208,11 @@ export default function OnDemandSale() {
           : (newCustomer.name || newCustomer.phone)
             ? { name: newCustomer.name, phone: newCustomer.phone }
             : undefined,
-        supplier: supplier._id,
-        items: cart.map(({ productId, quantity, price, buyingPrice }) => ({ productId, quantity, price, buyingPrice })),
+        supplier: supplier?._id || undefined,
+        items: cart.map(({ productId, quantity, price, buyingPrice, supplierId }) => ({
+          productId, quantity, price, buyingPrice,
+          supplierId: supplierId || supplier?._id || undefined,
+        })),
         discount: Number(discount || 0),
         amountPaid: paidAmount,
         paymentMethod,
@@ -158,18 +240,19 @@ export default function OnDemandSale() {
   }
 
   if (completed) {
+    const purchases = completed.purchases || (completed.purchase ? [completed.purchase] : [])
     return (
       <div className="text-center py-5">
         <div className="mb-3"><i className="bi bi-check-circle-fill text-success" style={{ fontSize: '4rem' }} /></div>
         <h3 className="fw-bold" style={{ color: '#0d3b66' }}>On-demand sale completed</h3>
-        <p className="text-muted mb-1">Sale <strong>{completed.sale.saleNumber}</strong> · Purchase <strong>{completed.purchase.purchaseNumber}</strong></p>
+        <p className="text-muted mb-1">Sale <strong>{completed.sale.saleNumber}</strong></p>
         <div className="d-flex justify-content-center gap-3 my-3 flex-wrap">
           <div className="border rounded p-3 bg-light">
             <div className="small text-muted">Customer pays</div>
             <div className="fw-bold fs-5">{formatMoney(completed.customerPayment)}</div>
           </div>
           <div className="border rounded p-3 bg-light">
-            <div className="small text-muted">Pay supplier (buying cost)</div>
+            <div className="small text-muted">Total supplier cost</div>
             <div className="fw-bold fs-5">{formatMoney(completed.supplierAmount)}</div>
           </div>
           <div className="border rounded p-3 bg-light">
@@ -177,14 +260,29 @@ export default function OnDemandSale() {
             <div className="fw-bold fs-5 text-success">{formatMoney(completed.profit)}</div>
           </div>
         </div>
-        <div className="d-flex justify-content-center gap-2 mt-3">
+        {purchases.length > 1 && (
+          <div className="d-flex justify-content-center mb-3">
+            <div className="border rounded p-3 bg-light text-start" style={{ minWidth: 300 }}>
+              <strong className="small text-muted d-block mb-2">Supplier Breakdown</strong>
+              {purchases.map((p) => (
+                <div key={p._id} className="d-flex justify-content-between small mb-1">
+                  <span>{p.supplierName}</span>
+                  <span className="fw-semibold">{formatMoney(p.totalAmount)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="d-flex justify-content-center gap-2 mt-3 flex-wrap">
           <Button variant="primary" onClick={() => navigate(`/sales/${completed.sale._id}`)}>
             <i className="bi bi-receipt me-1" />View / Print Invoice
           </Button>
-          <Button variant="outline-success" onClick={() => navigate(`/purchases/${completed.purchase._id}`)}>
-            <i className="bi bi-truck me-1" />Track Supplier Payment
-          </Button>
-          <Button variant="outline-primary" onClick={resetAll}><i className="bi bi-plus-lg me-1" />Start New On-demand Sale</Button>
+          {purchases.map((p) => (
+            <Button key={p._id} variant="outline-success" size="sm" onClick={() => navigate(`/purchases/${p._id}`)}>
+              <i className="bi bi-truck me-1" />{p.supplierName} — {formatMoney(p.remainingAmount)}
+            </Button>
+          ))}
+          <Button variant="outline-primary" onClick={() => resetAll()}><i className="bi bi-plus-lg me-1" />New On-demand Sale</Button>
         </div>
       </div>
     )
@@ -197,7 +295,7 @@ export default function OnDemandSale() {
       </h4>
       <p className="text-muted small mb-3">
         <i className="bi bi-info-circle me-1" />
-        Sell a product that is not in your stock: choose the product, set the <strong>selling price</strong> (what the customer pays) and the <strong>buying price</strong> (what you pay the supplier). A purchase is recorded for the supplier, kept separate from your stock.
+        Sell a product not in stock: set the <strong>selling price</strong> (customer pays) and <strong>buying price</strong> (you pay supplier). Products can come from <strong>different suppliers</strong> — assign per item or use a default supplier.
       </p>
 
       {error && <Alert variant="danger" dismissible onClose={() => setError('')} className="py-2 small">{error}</Alert>}
@@ -256,7 +354,7 @@ export default function OnDemandSale() {
 
           <Card body className="mb-3">
             <div className="d-flex justify-content-between align-items-center mb-2">
-              <Form.Label className="small fw-semibold mb-0">2. Supplier (where you source the product)</Form.Label>
+              <Form.Label className="small fw-semibold mb-0">2. Default Supplier <span className="text-muted fw-normal">(applies to all items unless overridden)</span></Form.Label>
               <Button size="sm" variant="outline-primary" onClick={() => setShowAddSupplier(true)}>
                 <i className="bi bi-plus-lg me-1" />New Supplier
               </Button>
@@ -270,25 +368,26 @@ export default function OnDemandSale() {
                 <Button size="sm" variant="link" onClick={() => { setSupplier(null); setSupplierQuery('') }}>change</Button>
               </div>
             ) : (
-              <>
-                <InputGroup>
-                  <InputGroup.Text><i className="bi bi-truck" /></InputGroup.Text>
-                  <Form.Select value={supplierQuery} onChange={(e) => {
-                    setSupplierQuery(e.target.value)
-                    const s = suppliers.find((x) => x._id === e.target.value)
-                    if (s) { setSupplier(s); setSupplierQuery(s.name) }
-                  }}>
-                    <option value="">Select supplier...</option>
-                    {filteredSuppliers.map((s) => <option key={s._id} value={s._id}>{s.name}{s.company ? ` — ${s.company}` : ''}</option>)}
-                  </Form.Select>
-                </InputGroup>
-              </>
+              <InputGroup>
+                <InputGroup.Text><i className="bi bi-truck" /></InputGroup.Text>
+                <Form.Select value={supplierQuery} onChange={(e) => {
+                  setSupplierQuery(e.target.value)
+                  const s = suppliers.find((x) => x._id === e.target.value)
+                  if (s) { setSupplier(s); setSupplierQuery(s.name) }
+                }}>
+                  <option value="">Select default supplier...</option>
+                  {filteredSuppliers.map((s) => <option key={s._id} value={s._id}>{s.name}{s.company ? ` — ${s.company}` : ''}</option>)}
+                </Form.Select>
+              </InputGroup>
             )}
           </Card>
 
           <Card body className="mb-3">
             <div className="d-flex justify-content-between align-items-center mb-2">
               <Form.Label className="small fw-semibold mb-0">3. Products to source</Form.Label>
+              <Button size="sm" variant="outline-primary" onClick={() => { setDupProduct(null); setDuplicateWarning(''); setNewProduct({ name: '', sellingPrice: '', buyingPriceAED: '' }); setShowAddProduct(true) }}>
+                <i className="bi bi-plus-lg me-1" />Add Product
+              </Button>
             </div>
             <InputGroup className="mb-3">
               <InputGroup.Text><i className="bi bi-search" /></InputGroup.Text>
@@ -335,7 +434,9 @@ export default function OnDemandSale() {
             <Card.Body style={{ maxHeight: 320, overflowY: 'auto' }}>
               {cart.length === 0 ? (
                 <div className="text-center text-muted py-4 small"><i className="bi bi-cart-x fs-2 d-block opacity-50 mb-1" />Cart is empty. Add products to source.</div>
-              ) : cart.map((item) => (
+              ) : cart.map((item) => {
+                const effectiveSup = getEffectiveSupplier(item)
+                return (
                 <div key={item.productId} className="cart-line py-2">
                   <div className="d-flex justify-content-between align-items-start">
                     <div className="min-w-0 pe-2">
@@ -361,12 +462,20 @@ export default function OnDemandSale() {
                       <Form.Control type="number" min="0" value={item.buyingPrice} onChange={(e) => updateBuyingPrice(item.productId, e.target.value)} />
                     </InputGroup>
                   </div>
+                  <div className="mt-2">
+                    <Form.Select size="sm" value={item.supplierId || ''} onChange={(e) => updateItemSupplier(item.productId, e.target.value)} style={{ fontSize: '0.75rem' }}>
+                      <option value="">{effectiveSup ? `${effectiveSup.name} (default)` : 'Select supplier...'}</option>
+                      {suppliers.filter((s) => !item.supplierId || s._id !== (effectiveSup?._id)).map((s) => (
+                        <option key={s._id} value={s._id}>{s.name}{s.company ? ` — ${s.company}` : ''}</option>
+                      ))}
+                    </Form.Select>
+                  </div>
                   <div className="d-flex justify-content-between text-muted mt-1" style={{ fontSize: '0.72rem' }}>
                     <span>Customer: <strong className="text-dark">{formatMoney(item.quantity * item.price)}</strong></span>
                     <span>Supplier: <strong className="text-dark">{formatMoney(item.quantity * item.buyingPrice)}</strong></span>
                   </div>
                 </div>
-              ))}
+              )})}
             </Card.Body>
 
             <Card.Footer className="bg-white">
@@ -436,7 +545,7 @@ export default function OnDemandSale() {
               </Form.Group>
 
               <Button className="w-100 py-2 fw-semibold" variant="success"
-                disabled={cart.length === 0 || saving || !supplier} onClick={() => setConfirming(true)}>
+                disabled={cart.length === 0 || saving} onClick={() => setConfirming(true)}>
                 <i className="bi bi-check-circle me-1" />Complete Sourcing Sale — {formatMoney(total)}
               </Button>
             </Card.Footer>
@@ -450,7 +559,6 @@ export default function OnDemandSale() {
           <table className="table table-sm small mb-3">
             <tbody>
               <tr><td className="text-muted">Customer</td><td className="text-end fw-semibold">{customer ? `${customer.name} (${customer.phone})` : `${newCustomer.name || '-'} (${newCustomer.phone || '-'})`}</td></tr>
-              <tr><td className="text-muted">Supplier</td><td className="text-end fw-semibold">{supplier?.name}</td></tr>
               <tr><td className="text-muted">Customer pays</td><td className="text-end fw-bold">{formatMoney(total)}</td></tr>
               <tr><td className="text-muted">Supplier buying cost</td><td className="text-end">{formatMoney(supplierCost)}</td></tr>
               <tr><td className="text-muted">Expected profit</td><td className={`text-end fw-bold ${profit >= 0 ? 'text-success' : 'text-danger'}`}>{formatMoney(profit)}</td></tr>
@@ -461,7 +569,28 @@ export default function OnDemandSale() {
               )}
             </tbody>
           </table>
-          <p className="small text-muted mb-0"><i className="bi bi-info-circle me-1" />A supplier purchase ({formatMoney(supplierCost)}) will be recorded separately and must be paid to the supplier. Stock is NOT reduced.</p>
+          {(() => {
+            const supBreakdown = {}
+            cart.forEach((item) => {
+              const sid = item.supplierId || supplier?._id || 'unknown'
+              const sname = getEffectiveSupplier(item)?.name || 'Unknown Supplier'
+              if (!supBreakdown[sid]) supBreakdown[sid] = { name: sname, amount: 0 }
+              supBreakdown[sid].amount += item.quantity * item.buyingPrice
+            })
+            const supList = Object.values(supBreakdown)
+            return supList.length > 0 && (
+              <div className="small mb-2">
+                <strong className="text-muted d-block mb-1">Supplier debt breakdown:</strong>
+                {supList.map((s, i) => (
+                  <div key={i} className="d-flex justify-content-between">
+                    <span>{s.name}</span>
+                    <span className="fw-semibold">{formatMoney(s.amount)}</span>
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
+          <p className="small text-muted mb-0"><i className="bi bi-info-circle me-1" />{cart.length > 1 ? 'Separate supplier purchases will be recorded for each supplier.' : 'A supplier purchase'} ({formatMoney(supplierCost)}) will be recorded and must be paid to the supplier(s). Stock is NOT reduced.</p>
         </Modal.Body>
         <Modal.Footer>
           <Button variant="light" onClick={() => setConfirming(false)} disabled={saving}>Cancel</Button>
@@ -492,6 +621,60 @@ export default function OnDemandSale() {
           <Button onClick={createSupplier} disabled={addingSupplier}>
             {addingSupplier ? <><span className="spinner-border spinner-border-sm me-1" />Adding...</> : 'Add Supplier'}
           </Button>
+        </Modal.Footer>
+      </Modal>
+
+      <Modal show={showAddProduct} onHide={() => !addingProduct && setShowAddProduct(false)} centered>
+        <Modal.Header closeButton={!addingProduct}><Modal.Title className="fs-6 fw-bold"><i className="bi bi-box-seam me-2" />Add New Product</Modal.Title></Modal.Header>
+        <Modal.Body>
+          {duplicateWarning && (
+            <Alert variant="warning" className="py-2 small mb-3">
+              <i className="bi bi-exclamation-triangle me-1" />{duplicateWarning}
+              <div className="mt-1">
+                <Button size="sm" variant="outline-warning" onClick={() => {
+                  if (dupProduct) { addToCart(dupProduct); setShowAddProduct(false); setDupProduct(null); setDuplicateWarning(''); setNewProduct({ name: '', sellingPrice: '', buyingPriceAED: '' }) }
+                }}>
+                  <i className="bi bi-plus-lg me-1" />Add existing product instead
+                </Button>
+              </div>
+            </Alert>
+          )}
+          <Form.Group className="mb-2">
+            <Form.Label className="small fw-semibold">Product Name *</Form.Label>
+            <Form.Control autoFocus value={newProduct.name} onChange={(e) => { setNewProduct({ ...newProduct, name: e.target.value }); checkDuplicate(e.target.value) }} placeholder="e.g. Samsung S21 LCD" />
+          </Form.Group>
+          <Row className="g-2">
+            <Col sm={6}>
+              <Form.Group>
+                <Form.Label className="small fw-semibold">Selling Price (RWF) *</Form.Label>
+                <Form.Control type="number" min="0" value={newProduct.sellingPrice} onChange={(e) => setNewProduct({ ...newProduct, sellingPrice: e.target.value })} />
+              </Form.Group>
+            </Col>
+            <Col sm={6}>
+              <Form.Group>
+                <Form.Label className="small fw-semibold">Buy Price Per Unit (AED)</Form.Label>
+                <InputGroup size="sm">
+                  <InputGroup.Text>AED</InputGroup.Text>
+                  <Form.Control type="number" min="0" value={newProduct.buyingPriceAED} onChange={(e) => setNewProduct({ ...newProduct, buyingPriceAED: e.target.value })} placeholder="e.g. 500" />
+                </InputGroup>
+              </Form.Group>
+            </Col>
+          </Row>
+          {ratesError && <Alert variant="warning" className="py-1 px-2 small mt-2 mb-0"><i className="bi bi-exclamation-triangle me-1" />{ratesError}</Alert>}
+          <ExchangeRateCard aed={newProduct.buyingPriceAED} rates={rates} />
+          <p className="small text-muted mt-2 mb-0"><i className="bi bi-info-circle me-1" />A SKU is generated automatically. The product starts with 0 stock.</p>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="light" onClick={() => setShowAddProduct(false)} disabled={addingProduct}>Cancel</Button>
+          {dupProduct ? (
+            <Button variant="warning" onClick={createProduct} disabled={addingProduct}>
+              <i className="bi bi-plus-lg me-1" />Add Existing Product
+            </Button>
+          ) : (
+            <Button onClick={createProduct} disabled={addingProduct}>
+              {addingProduct ? <><span className="spinner-border spinner-border-sm me-1" />Creating...</> : <><i className="bi bi-check-lg me-1" />Create & Add to Cart</>}
+            </Button>
+          )}
         </Modal.Footer>
       </Modal>
     </div>

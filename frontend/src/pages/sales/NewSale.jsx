@@ -30,6 +30,9 @@ export default function NewSale() {
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [addingProduct, setAddingProduct] = useState(false)
   const [newProduct, setNewProduct] = useState({ name: '', sellingPrice: '', buyingPriceAED: '' })
+  const [duplicateWarning, setDuplicateWarning] = useState('')
+  const [dupProduct, setDupProduct] = useState(null)
+  const dupTimer = useRef(null)
   const [rates, setRates] = useState(null)
   const [ratesError, setRatesError] = useState('')
   const searchTimer = useRef(null)
@@ -120,8 +123,32 @@ export default function NewSale() {
     setOutOfStockProduct(null)
   }
 
+  const checkDuplicate = (name) => {
+    clearTimeout(dupTimer.current)
+    setDupProduct(null)
+    setDuplicateWarning('')
+    if (!name || name.trim().length < 2) return
+    dupTimer.current = setTimeout(async () => {
+      try {
+        const { data } = await api.get('/products/check-duplicate', { params: { name: name.trim() } })
+        if (data.data.exists) {
+          setDupProduct(data.data.product)
+          setDuplicateWarning(`A product named "${data.data.product.name}" already exists (${data.data.product.sku}, selling at ${formatMoney(data.data.product.sellingPrice)}).`)
+        }
+      } catch { /* silent */ }
+    }, 400)
+  }
+
   const createProduct = async () => {
     if (!newProduct.name.trim()) return setError('Product name is required')
+    if (dupProduct) {
+      addToCart(dupProduct)
+      setNewProduct({ name: '', sellingPrice: '', buyingPriceAED: '' })
+      setDupProduct(null)
+      setDuplicateWarning('')
+      setShowAddProduct(false)
+      return
+    }
     setAddingProduct(true)
     setError('')
     try {
@@ -133,6 +160,8 @@ export default function NewSale() {
       const created = data.data
       addToCart(created)
       setNewProduct({ name: '', sellingPrice: '', buyingPriceAED: '' })
+      setDupProduct(null)
+      setDuplicateWarning('')
       setShowAddProduct(false)
       api.get('/products', { params: { limit: 200, status: 'ACTIVE' } }).then((r) => setProducts(r.data.data.products)).catch(() => {})
     } catch (err) {
@@ -266,7 +295,7 @@ export default function NewSale() {
           <Card body>
             <div className="d-flex justify-content-between align-items-center mb-3">
               <Form.Label className="small fw-semibold mb-0">2. Products</Form.Label>
-              <Button size="sm" variant="outline-primary" onClick={() => setShowAddProduct(true)}>
+              <Button size="sm" variant="outline-primary" onClick={() => { setDupProduct(null); setDuplicateWarning(''); setNewProduct({ name: '', sellingPrice: '', buyingPriceAED: '' }); setShowAddProduct(true) }}>
                 <i className="bi bi-plus-lg me-1" />Add Product
               </Button>
             </div>
@@ -452,9 +481,21 @@ export default function NewSale() {
       <Modal show={showAddProduct} onHide={() => !addingProduct && setShowAddProduct(false)} centered>
         <Modal.Header closeButton={!addingProduct}><Modal.Title className="fs-6 fw-bold"><i className="bi bi-box-seam me-2" />Add New Product</Modal.Title></Modal.Header>
         <Modal.Body>
+          {duplicateWarning && (
+            <Alert variant="warning" className="py-2 small mb-3">
+              <i className="bi bi-exclamation-triangle me-1" />{duplicateWarning}
+              <div className="mt-1">
+                <Button size="sm" variant="outline-warning" onClick={() => {
+                  if (dupProduct) { addToCart(dupProduct); setNewProduct({ name: '', sellingPrice: '', buyingPriceAED: '' }); setShowAddProduct(false); setDupProduct(null); setDuplicateWarning('') }
+                }}>
+                  <i className="bi bi-plus-lg me-1" />Add existing product to cart
+                </Button>
+              </div>
+            </Alert>
+          )}
           <Form.Group className="mb-2">
             <Form.Label className="small fw-semibold">Product Name *</Form.Label>
-            <Form.Control autoFocus value={newProduct.name} onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })} placeholder="e.g. Samsung S21 LCD" />
+            <Form.Control autoFocus value={newProduct.name} onChange={(e) => { setNewProduct({ ...newProduct, name: e.target.value }); checkDuplicate(e.target.value) }} placeholder="e.g. Samsung S21 LCD" />
           </Form.Group>
           <Row className="g-2">
             <Col sm={6}>
@@ -479,9 +520,15 @@ export default function NewSale() {
         </Modal.Body>
         <Modal.Footer>
           <Button variant="light" onClick={() => setShowAddProduct(false)} disabled={addingProduct}>Cancel</Button>
-          <Button onClick={createProduct} disabled={addingProduct}>
-            {addingProduct ? <><span className="spinner-border spinner-border-sm me-1" />Creating...</> : <><i className="bi bi-check-lg me-1" />Create & Add to Cart</>}
-          </Button>
+          {dupProduct ? (
+            <Button variant="warning" onClick={createProduct} disabled={addingProduct}>
+              <i className="bi bi-plus-lg me-1" />Add Existing Product
+            </Button>
+          ) : (
+            <Button onClick={createProduct} disabled={addingProduct}>
+              {addingProduct ? <><span className="spinner-border spinner-border-sm me-1" />Creating...</> : <><i className="bi bi-check-lg me-1" />Create & Add to Cart</>}
+            </Button>
+          )}
         </Modal.Footer>
       </Modal>
     </div>

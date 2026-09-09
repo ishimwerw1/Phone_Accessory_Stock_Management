@@ -105,6 +105,14 @@ exports.getOne = asyncHandler(async (req, res) => {
   success(res, 'Product', { product, stockTx, sales });
 });
 
+exports.checkDuplicate = asyncHandler(async (req, res) => {
+  const { name } = req.query;
+  if (!name) return success(res, 'Check result', { exists: false });
+  const re = new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+  const existing = await Product.findOne({ name: re, status: 'ACTIVE' }).select('name sku sellingPrice').lean();
+  success(res, 'Check result', { exists: Boolean(existing), product: existing || null });
+});
+
 exports.create = asyncHandler(async (req, res) => {
   let sku = (req.body.sku || '').trim().toUpperCase();
   if (!sku) {

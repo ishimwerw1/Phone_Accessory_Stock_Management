@@ -5,6 +5,7 @@ const { PERMISSIONS } = require('../utils/constants');
 
 router.get('/', auth, permission(PERMISSIONS.PRODUCTS_READ), c.getAll);
 router.get('/autocomplete', auth, permission(PERMISSIONS.PRODUCTS_READ), c.getAutocomplete);
+router.get('/check-duplicate', auth, permission(PERMISSIONS.PRODUCTS_READ), c.checkDuplicate);
 router.get('/:id', auth, permission(PERMISSIONS.PRODUCTS_READ), c.getOne);
 router.post('/', auth, permission(PERMISSIONS.PRODUCTS_CREATE), c.create);
 router.put('/:id', auth, permission(PERMISSIONS.PRODUCTS_UPDATE), c.update);

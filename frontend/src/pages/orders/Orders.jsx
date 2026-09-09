@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Card, Form, Button, Modal, Alert, Row, Col, Table, InputGroup, ListGroup } from 'react-bootstrap'
 import { useNavigate } from 'react-router-dom'
 import api, { getError } from '../../api/client'
@@ -28,6 +28,12 @@ export default function Orders() {
   const [newOrder, setNewOrder] = useState({ customerName: '', customerPhone: '', notes: '', expectedDeliveryDate: '', items: [{ product: '', name: '', search: '', quantity: '1', price: '' }], discount: '0' })
 
   const [selectedMap, setSelectedMap] = useState({})
+  const [showAddProduct, setShowAddProduct] = useState(false)
+  const [addingProduct, setAddingProduct] = useState(false)
+  const [newProduct, setNewProduct] = useState({ name: '', sellingPrice: '', buyingPriceAED: '' })
+  const [duplicateWarning, setDuplicateWarning] = useState('')
+  const [dupProduct, setDupProduct] = useState(null)
+  const dupTimer = useRef(null)
   const [showBulk, setShowBulk] = useState(false)
   const [bulkMethod, setBulkMethod] = useState('CASH')
   const [bulkAmount, setBulkAmount] = useState('')
@@ -71,6 +77,56 @@ export default function Orders() {
     setNewOrder({ customerName: '', customerPhone: '', notes: '', expectedDeliveryDate: '', items: [{ product: '', name: '', search: '', quantity: '1', price: '' }], discount: '0' })
     api.get('/products', { params: { limit: 200, status: 'ACTIVE' } }).then((r) => setProducts(r.data.data.products)).catch(() => {})
     setShowCreate(true)
+  }
+
+  const checkDuplicate = (name) => {
+    clearTimeout(dupTimer.current)
+    setDupProduct(null)
+    setDuplicateWarning('')
+    if (!name || name.trim().length < 2) return
+    dupTimer.current = setTimeout(async () => {
+      try {
+        const { data } = await api.get('/products/check-duplicate', { params: { name: name.trim() } })
+        if (data.data.exists) {
+          setDupProduct(data.data.product)
+          setDuplicateWarning(`A product named "${data.data.product.name}" already exists (${data.data.product.sku}). Use it?`)
+        }
+      } catch { /* silent */ }
+    }, 400)
+  }
+
+  const createProduct = async () => {
+    if (!newProduct.name.trim()) return setError('Product name is required')
+    if (dupProduct) {
+      setProducts((prev) => {
+        if (prev.some((p) => p._id === dupProduct._id)) return prev
+        return [...prev, dupProduct]
+      })
+      setNewProduct({ name: '', sellingPrice: '', buyingPriceAED: '' })
+      setDupProduct(null)
+      setDuplicateWarning('')
+      setShowAddProduct(false)
+      return
+    }
+    setAddingProduct(true)
+    setError('')
+    try {
+      const { data } = await api.post('/products', {
+        name: newProduct.name.trim(),
+        sellingPrice: Number(newProduct.sellingPrice || 0),
+        buyingPriceAED: Number(newProduct.buyingPriceAED || 0),
+      })
+      const created = data.data
+      setProducts((prev) => [...prev, created])
+      setNewProduct({ name: '', sellingPrice: '', buyingPriceAED: '' })
+      setDupProduct(null)
+      setDuplicateWarning('')
+      setShowAddProduct(false)
+    } catch (err) {
+      setError(getError(err))
+    } finally {
+      setAddingProduct(false)
+    }
   }
 
   const newSubtotal = useMemo(() => newOrder.items.reduce((s, i) => s + (Number(i.quantity) || 0) * (Number(i.price) || (i.product ? products.find((p) => p._id === i.product)?.sellingPrice || 0 : 0)), 0), [newOrder.items, products])
@@ -324,7 +380,12 @@ export default function Orders() {
 
           <div className="d-flex justify-content-between align-items-center mb-2">
             <strong className="small">Items</strong>
-            <Button size="sm" variant="outline-primary" onClick={addNewOrderItem}><i className="bi bi-plus me-1" />Add Item</Button>
+            <div className="d-flex gap-2">
+              <Button size="sm" variant="outline-primary" onClick={() => { setDupProduct(null); setDuplicateWarning(''); setNewProduct({ name: '', sellingPrice: '', buyingPriceAED: '' }); setShowAddProduct(true) }}>
+                <i className="bi bi-plus-lg me-1" />Add Product
+              </Button>
+              <Button size="sm" variant="outline-secondary" onClick={addNewOrderItem}><i className="bi bi-plus me-1" />Add Item</Button>
+            </div>
           </div>
           {newOrder.items.map((it, idx) => (
             <div key={idx} className="mb-2">
@@ -518,6 +579,61 @@ export default function Orders() {
           <Button variant="success" onClick={bulkFulfill} disabled={saving || !selectedOrders.length}>
             {saving ? 'Processing...' : <><i className="bi bi-bag-check me-1" />Convert All to Sales</>}
           </Button>
+        </Modal.Footer>
+      </Modal>
+
+      <Modal show={showAddProduct} onHide={() => !addingProduct && setShowAddProduct(false)} centered>
+        <Modal.Header closeButton={!addingProduct}><Modal.Title className="fs-6 fw-bold"><i className="bi bi-box-seam me-2" />Add New Product</Modal.Title></Modal.Header>
+        <Modal.Body>
+          {duplicateWarning && (
+            <Alert variant="warning" className="py-2 small mb-3">
+              <i className="bi bi-exclamation-triangle me-1" />{duplicateWarning}
+              <div className="mt-1">
+                <Button size="sm" variant="outline-warning" onClick={() => {
+                  if (dupProduct) {
+                    setProducts((prev) => { if (prev.some((p) => p._id === dupProduct._id)) return prev; return [...prev, dupProduct] })
+                    setNewProduct({ name: '', sellingPrice: '', buyingPriceAED: '' })
+                    setShowAddProduct(false)
+                    setDupProduct(null)
+                    setDuplicateWarning('')
+                  }
+                }}>
+                  <i className="bi bi-plus-lg me-1" />Use existing product
+                </Button>
+              </div>
+            </Alert>
+          )}
+          <Form.Group className="mb-2">
+            <Form.Label className="small fw-semibold">Product Name *</Form.Label>
+            <Form.Control autoFocus value={newProduct.name} onChange={(e) => { setNewProduct({ ...newProduct, name: e.target.value }); checkDuplicate(e.target.value) }} placeholder="e.g. Samsung S21 LCD" />
+          </Form.Group>
+          <Row className="g-2">
+            <Col sm={6}>
+              <Form.Group>
+                <Form.Label className="small fw-semibold">Selling Price (RWF) *</Form.Label>
+                <Form.Control type="number" min="0" value={newProduct.sellingPrice} onChange={(e) => setNewProduct({ ...newProduct, sellingPrice: e.target.value })} />
+              </Form.Group>
+            </Col>
+            <Col sm={6}>
+              <Form.Group>
+                <Form.Label className="small fw-semibold">Buy Price (AED)</Form.Label>
+                <Form.Control type="number" min="0" value={newProduct.buyingPriceAED} onChange={(e) => setNewProduct({ ...newProduct, buyingPriceAED: e.target.value })} placeholder="optional" />
+              </Form.Group>
+            </Col>
+          </Row>
+          <p className="small text-muted mt-2 mb-0"><i className="bi bi-info-circle me-1" />SKU is generated automatically. Product starts with 0 stock.</p>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="light" onClick={() => setShowAddProduct(false)} disabled={addingProduct}>Cancel</Button>
+          {dupProduct ? (
+            <Button variant="warning" onClick={createProduct} disabled={addingProduct}>
+              <i className="bi bi-plus-lg me-1" />Use Existing Product
+            </Button>
+          ) : (
+            <Button onClick={createProduct} disabled={addingProduct}>
+              {addingProduct ? <><span className="spinner-border spinner-border-sm me-1" />Creating...</> : <><i className="bi bi-check-lg me-1" />Create Product</>}
+            </Button>
+          )}
         </Modal.Footer>
       </Modal>
     </div>
