@@ -5,6 +5,8 @@ const { PERMISSIONS } = require('../utils/constants');
 
 router.get('/', auth, c.getAll);
 router.get('/stats', auth, c.stats);
+router.get('/accounts', auth, c.getAccounts);
+router.get('/accounts/:customerId', auth, c.getAccountDetail);
 router.get('/:id', auth, c.getOne);
 router.put('/:id', auth, permission(PERMISSIONS.LOANS_UPDATE), c.update);
 router.delete('/:id', auth, permission(PERMISSIONS.LOANS_UPDATE), c.cancel);

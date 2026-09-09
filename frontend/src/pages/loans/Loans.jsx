@@ -8,7 +8,7 @@ import StatCard from '../../components/common/StatCard'
 import { formatMoney } from '../../context/LanguageContext'
 
 export default function Loans() {
-  const [loans, setLoans] = useState([])
+  const [accounts, setAccounts] = useState([])
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
@@ -27,11 +27,14 @@ export default function Loans() {
       if (status !== 'ALL') params.status = status
       if (from) params.from = from
       if (to) params.to = to
-      const { data } = await api.get('/loans', { params })
-      setLoans(data.data.loans)
-      setStats(data.data.stats)
-      setPages(Math.ceil(data.data.total / 15) || 1)
-      setTotal(data.data.total)
+      const [accRes, statRes] = await Promise.all([
+        api.get('/loans/accounts', { params }),
+        api.get('/loans/stats')
+      ])
+      setAccounts(accRes.data.data.accounts)
+      setStats(statRes.data.data)
+      setPages(Math.ceil(accRes.data.data.total / 15) || 1)
+      setTotal(accRes.data.data.total)
     } finally {
       setLoading(false)
     }
@@ -42,7 +45,7 @@ export default function Loans() {
   return (
     <div>
       <h4 className="fw-bold mb-3" style={{ color: '#0d3b66' }}>
-        <i className="bi bi-cash-coin me-2" />Loans / Credit Management <span className="text-muted fs-6">({total})</span>
+        <i className="bi bi-cash-coin me-2" />Loans / Credit Management <span className="text-muted fs-6">({total} {total === 1 ? 'customer' : 'customers'})</span>
       </h4>
 
       {stats && (
@@ -56,40 +59,41 @@ export default function Loans() {
 
       <Card body>
         <div className="d-flex flex-wrap gap-2 mb-3">
-          <Form.Control size="sm" placeholder="Search customer, phone, loan # or sale #..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1) }} style={{ maxWidth: 280 }} />
+          <Form.Control size="sm" placeholder="Search customer name or phone..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1) }} style={{ maxWidth: 280 }} />
           <Form.Select size="sm" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1) }} style={{ maxWidth: 170 }}>
-            {['ALL', 'ACTIVE', 'PARTIALLY_PAID', 'PAID', 'OVERDUE', 'CANCELLED'].map((s) => (
+            {['ALL', 'ACTIVE', 'PARTIALLY_PAID', 'PAID', 'OVERDUE'].map((s) => (
               <option key={s} value={s}>{s === 'ALL' ? 'All Statuses' : s.replace(/_/g, ' ')}</option>
             ))}
           </Form.Select>
           <Form.Control size="sm" type="date" value={from} onChange={(e) => { setFrom(e.target.value); setPage(1) }} style={{ maxWidth: 155 }} />
           <Form.Control size="sm" type="date" value={to} onChange={(e) => { setTo(e.target.value); setPage(1) }} style={{ maxWidth: 155 }} />
+          {(search || status !== 'ALL' || from || to) && (
+            <Button size="sm" variant="outline-secondary" onClick={() => { setSearch(''); setStatus('ALL'); setFrom(''); setTo(''); setPage(1) }}>
+              <i className="bi bi-x-circle me-1" />Clear
+            </Button>
+          )}
         </div>
 
         <DataTable
           columns={[
-            { key: 'loanNumber', label: 'Loan ID', render: (l) => (
-              <Link to={`/loans/${l._id}`} className="fw-semibold text-decoration-none" style={{ color: '#0d3b66' }}>{l.loanNumber}</Link>
+            { key: 'customerName', label: 'Customer', render: (a) => (
+              <div className="fw-semibold small" style={{ color: '#0d3b66' }}>{a.customerName || '-'}</div>
             )},
-            { key: 'customerName', label: 'Customer', render: (l) => (
-              <span className="small">{l.customerName}<br /><small className="text-muted">{l.customerPhone}</small></span>
+            { key: 'customerPhone', label: 'Phone', render: (a) => <code className="small">{a.customerPhone || '-'}</code> },
+            { key: 'transactionCount', label: 'Loan Transactions', render: (a) => (
+              <span className="badge rounded-pill text-bg-light border">{a.transactionCount}</span>
             )},
-            { key: 'totalAmount', label: 'Total', render: (l) => formatMoney(l.totalAmount) },
-            { key: 'amountPaid', label: 'Paid', render: (l) => <span className="text-success fw-semibold">{formatMoney(l.amountPaid)}</span> },
-            { key: 'outstanding', label: 'Remaining', render: (l) => (
-              <strong className={l.outstanding > 0 ? 'text-danger' : 'text-success'}>{formatMoney(l.outstanding)}</strong>
+            { key: 'totalDebt', label: 'Total Debt', render: (a) => formatMoney(a.totalDebt) },
+            { key: 'totalPaid', label: 'Total Paid', render: (a) => <span className="text-success fw-semibold">{formatMoney(a.totalPaid)}</span> },
+            { key: 'remainingBalance', label: 'Remaining Balance', render: (a) => (
+              <strong className={a.remainingBalance > 0 ? 'text-danger' : 'text-success'}>{formatMoney(a.remainingBalance)}</strong>
             )},
-            { key: 'dueDate', label: 'Due Date', render: (l) => {
-              if (!l.dueDate) return '-'
-              const overdue = new Date(l.dueDate) < new Date() && !['PAID', 'CANCELLED'].includes(l.status)
-              return <span className={`small ${overdue ? 'text-danger fw-bold' : ''}`}>{new Date(l.dueDate).toLocaleDateString()}</span>
-            }},
-            { key: 'status', label: 'Status', render: (l) => <StatusBadge value={l.status} /> },
-            { key: 'actions', label: '', render: (l) => (
-              <Link to={`/loans/${l._id}`} className="btn btn-sm btn-light border"><i className="bi bi-eye" /></Link>
+            { key: 'status', label: 'Status', render: (a) => <StatusBadge value={a.status} /> },
+            { key: 'actions', label: '', render: (a) => (
+              <Link to={`/loans/accounts/${a.customer || 'void'}`} className="btn btn-sm btn-primary"><i className="bi bi-eye me-1" />View</Link>
             )}
           ]}
-          data={loans}
+          data={accounts}
           loading={loading}
           page={page}
           pages={pages}
@@ -98,24 +102,35 @@ export default function Loans() {
         />
       </Card>
 
-      {stats && stats.overdueCount > 0 && status === 'ALL' && (
+      {stats && stats.overdue > 0 && status === 'ALL' && (
         <>
-          <h5 className="fw-bold mt-4 mb-2"><Badge bg="" className="badge-soft-danger">OVERDUE</Badge> Overdue Loans</h5>
+          <h5 className="fw-bold mt-4 mb-2"><Badge bg="" className="badge-soft-danger">OVERDUE</Badge> Customers with overdue loans</h5>
           <Card body>
-            <DataTable
-              columns={[
-                { key: 'loanNumber', label: 'Loan ID' },
-                { key: 'customerName', label: 'Customer', render: (l) => `${l.customerName} (${l.customerPhone})` },
-                { key: 'outstanding', label: 'Remaining', render: (l) => <strong className="text-danger">{formatMoney(l.outstanding)}</strong> },
-                { key: 'dueDate', label: 'Due Date', render: (l) => new Date(l.dueDate).toLocaleDateString() },
-                { key: 'actions', label: '', render: (l) => <Link to={`/loans/${l._id}`} className="btn btn-sm btn-primary">Repay</Link> }
-              ]}
-              data={loans.filter((l) => l.status === 'OVERDUE')}
-              loading={false}
-              page={1}
-              pages={1}
-              emptyText="No overdue loans"
-            />
+            <div className="table-responsive">
+              <table className="table table-hover table-sm align-middle bg-white mb-0">
+                <thead>
+                  <tr>
+                    <th>Customer</th>
+                    <th>Phone</th>
+                    <th className="text-end">Remaining</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {accounts.filter((a) => a.status === 'OVERDUE').length === 0 && (
+                    <tr><td colSpan={4} className="text-center text-muted py-3">No overdue customers</td></tr>
+                  )}
+                  {accounts.filter((a) => a.status === 'OVERDUE').map((a) => (
+                    <tr key={a.customer || a.customerName}>
+                      <td className="fw-medium small">{a.customerName}</td>
+                      <td><code className="small">{a.customerPhone}</code></td>
+                      <td className="text-end fw-bold text-danger">{formatMoney(a.remainingBalance)}</td>
+                      <td className="text-end"><Link to={`/loans/accounts/${a.customer || 'void'}`} className="btn btn-sm btn-primary">View</Link></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </Card>
         </>
       )}
