@@ -71,11 +71,12 @@ export default function Products() {
     })
   }, [sort])
 
-  const deactivate = async () => {
+  const remove = async () => {
     try {
       await api.delete(`/products/${deactivating._id}`)
       setDeactivating(null)
       load()
+      window.dispatchEvent(new Event('stock-updated'))
     } catch (err) {
       setToast({ type: 'danger', msg: getError(err) })
       setDeactivating(null)
@@ -170,12 +171,12 @@ export default function Products() {
 
       <ConfirmDialog
         show={Boolean(deactivating)}
-        title="Deactivate Product"
-        message={`Are you sure you want to deactivate "${deactivating?.name}"? It will no longer be sellable.`}
-        confirmLabel="Deactivate"
+        title="Delete Product"
+        message={`Are you sure you want to permanently delete "${deactivating?.name}"? This cannot be undone and it will be removed from all product lists. Historical sales, orders and stock records are preserved.`}
+        confirmLabel="Delete"
         loading={false}
         onClose={() => setDeactivating(null)}
-        onConfirm={deactivate}
+        onConfirm={remove}
       />
     </div>
   )

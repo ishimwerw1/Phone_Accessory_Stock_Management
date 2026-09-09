@@ -85,8 +85,8 @@ exports.update = asyncHandler(async (req, res) => {
 });
 
 exports.remove = asyncHandler(async (req, res) => {
-  const customer = await Customer.findByIdAndUpdate(req.params.id, { status: 'INACTIVE' }, { new: true });
+  const customer = await Customer.findByIdAndDelete(req.params.id);
   if (!customer) return error(res, 'Customer not found', 404);
-  await audit(req, 'CUSTOMER_DEACTIVATED', 'Customer', req.params.id, { name: customer.name });
-  success(res, 'Customer deactivated');
+  await audit(req, 'CUSTOMER_DELETED', 'Customer', req.params.id, { name: customer.name, phone: customer.phone });
+  success(res, 'Customer deleted');
 });

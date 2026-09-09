@@ -176,7 +176,7 @@ export default function Customers() {
       <ConfirmDialog
         show={Boolean(deleting)}
         title="Delete Customer"
-        message={`Delete "${deleting?.name}"? Only possible when the customer has no purchase records.`}
+        message={`Permanently delete "${deleting?.name}"? This cannot be undone. Historical sales, orders and loans are preserved with the recorded customer name.`}
         onClose={() => setDeleting(null)}
         onConfirm={remove}
       />

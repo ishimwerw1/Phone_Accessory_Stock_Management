@@ -192,8 +192,8 @@ exports.update = asyncHandler(async (req, res) => {
 
 exports.remove = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const product = await Product.findByIdAndUpdate(id, { status: 'INACTIVE' }, { new: true });
+  const product = await Product.findByIdAndDelete(id);
   if (!product) return error(res, 'Product not found', 404);
-  await audit(req, 'PRODUCT_DEACTIVATED', 'Product', id, { name: product.name });
-  success(res, 'Product deactivated');
+  await audit(req, 'PRODUCT_DELETED', 'Product', id, { name: product.name, sku: product.sku });
+  success(res, 'Product deleted');
 });

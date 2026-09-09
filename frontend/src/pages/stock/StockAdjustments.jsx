@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Card, Row, Col, Form, Button, Alert, Table } from 'react-bootstrap'
 import api, { getError } from '../../api/client'
+import ProductSelect from '../../components/common/ProductSelect'
 
 export default function StockAdjustments() {
   const [products, setProducts] = useState([])
@@ -59,12 +60,13 @@ export default function StockAdjustments() {
             <Form onSubmit={submit}>
               <Form.Group className="mb-3">
                 <Form.Label>Product *</Form.Label>
-                <Form.Select value={productId} onChange={(e) => { setProductId(e.target.value); setActualQty('') }} required>
-                  <option value="">-- Select product --</option>
-                  {products.map((p) => (
-                    <option key={p._id} value={p._id}>{p.name} ({p.sku}) — system qty: {p.quantity}</option>
-                  ))}
-                </Form.Select>
+                <ProductSelect
+                  products={products}
+                  value={productId}
+                  onChange={(id) => { setProductId(id); setActualQty('') }}
+                  showStock
+                  placeholder="Search product by name, model or SKU..."
+                />
               </Form.Group>
 
               {selected && (

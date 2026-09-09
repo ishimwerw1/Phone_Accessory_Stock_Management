@@ -3,6 +3,7 @@ import { Card, Row, Col, Form, Button, Alert, Badge, InputGroup } from 'react-bo
 import api, { getError } from '../../api/client'
 import { extractRates } from '../../utils/currency'
 import ExchangeRateCard from '../../components/common/ExchangeRateCard'
+import ProductSelect from '../../components/common/ProductSelect'
 
 export default function StockIn() {
   const [products, setProducts] = useState([])
@@ -76,12 +77,13 @@ export default function StockIn() {
               {error && <Alert variant="danger" className="py-2 small">{error}</Alert>}
               <Form.Group className="mb-3">
                 <Form.Label>Product *</Form.Label>
-                <Form.Select value={productId} onChange={(e) => setProductId(e.target.value)} required>
-                  <option value="">-- Select product --</option>
-                  {products.map((p) => (
-                    <option key={p._id} value={p._id}>{p.name} ({p.sku}) — stock: {p.quantity}</option>
-                  ))}
-                </Form.Select>
+                <ProductSelect
+                  products={products}
+                  value={productId}
+                  onChange={(id) => { setProductId(id); setBuyingPriceAED('') }}
+                  showStock
+                  placeholder="Search product by name, model or SKU..."
+                />
               </Form.Group>
 
               <Row className="g-3">
