@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Card, Form, Button, Modal, Alert, Row, Col, Table } from 'react-bootstrap'
+import { Card, Form, Button, Modal, Alert, Row, Col, Table, InputGroup, ListGroup } from 'react-bootstrap'
 import { useNavigate } from 'react-router-dom'
 import api, { getError } from '../../api/client'
 import DataTable from '../../components/common/DataTable'
@@ -24,7 +24,8 @@ export default function Orders() {
 
   const [showCreate, setShowCreate] = useState(false)
   const [products, setProducts] = useState([])
-  const [newOrder, setNewOrder] = useState({ customerName: '', customerPhone: '', notes: '', expectedDeliveryDate: '', items: [{ product: '', name: '', quantity: '1', price: '' }], discount: '0' })
+  const [itemSearchOpen, setItemSearchOpen] = useState({})
+  const [newOrder, setNewOrder] = useState({ customerName: '', customerPhone: '', notes: '', expectedDeliveryDate: '', items: [{ product: '', name: '', search: '', quantity: '1', price: '' }], discount: '0' })
 
   const [selectedMap, setSelectedMap] = useState({})
   const [showBulk, setShowBulk] = useState(false)
@@ -66,7 +67,8 @@ export default function Orders() {
 
   const openCreate = () => {
     setError('')
-    setNewOrder({ customerName: '', customerPhone: '', notes: '', expectedDeliveryDate: '', items: [{ product: '', name: '', quantity: '1', price: '' }], discount: '0' })
+    setItemSearchOpen({})
+    setNewOrder({ customerName: '', customerPhone: '', notes: '', expectedDeliveryDate: '', items: [{ product: '', name: '', search: '', quantity: '1', price: '' }], discount: '0' })
     api.get('/products', { params: { limit: 200, status: 'ACTIVE' } }).then((r) => setProducts(r.data.data.products)).catch(() => {})
     setShowCreate(true)
   }
@@ -78,12 +80,36 @@ export default function Orders() {
     const p = products.find((x) => x._id === pid)
     const items = [...newOrder.items]
     items[idx] = p
-      ? { product: p._id, name: p.name, quantity: items[idx].quantity, price: p.sellingPrice }
+      ? { ...items[idx], product: p._id, name: p.name, search: p.name, quantity: items[idx].quantity, price: p.sellingPrice }
       : { ...items[idx], product: '', name: items[idx].name }
+    setNewOrder({ ...newOrder, items })
+    setItemSearchOpen((prev) => ({ ...prev, [idx]: false }))
+  }
+
+  const updateItem = (idx, patch) => {
+    const items = [...newOrder.items]
+    items[idx] = { ...items[idx], ...patch }
     setNewOrder({ ...newOrder, items })
   }
 
-  const addNewOrderItem = () => setNewOrder({ ...newOrder, items: [...newOrder.items, { product: '', name: '', quantity: '1', price: '' }] })
+  const clearItemProduct = (idx) => {
+    const items = [...newOrder.items]
+    items[idx] = { ...items[idx], product: '', name: items[idx].name, search: '' }
+    setNewOrder({ ...newOrder, items })
+  }
+
+  const filteredItemProducts = (q) => {
+    const text = (q || '').trim().toLowerCase()
+    if (!text) return products
+    return products.filter((p) =>
+      p.name.toLowerCase().includes(text) ||
+      p.sku.toLowerCase().includes(text) ||
+      (p.barcode || '').includes(text) ||
+      (p.modelName || '').toLowerCase().includes(text)
+    )
+  }
+
+  const addNewOrderItem = () => setNewOrder({ ...newOrder, items: [...newOrder.items, { product: '', name: '', search: '', quantity: '1', price: '' }] })
   const removeNewOrderItem = (idx) => { if (newOrder.items.length <= 1) return; setNewOrder({ ...newOrder, items: newOrder.items.filter((_, i) => i !== idx) }) }
 
   const submitOrder = async () => {
@@ -301,20 +327,55 @@ export default function Orders() {
             <Button size="sm" variant="outline-primary" onClick={addNewOrderItem}><i className="bi bi-plus me-1" />Add Item</Button>
           </div>
           {newOrder.items.map((it, idx) => (
-            <div key={idx} className="d-flex gap-2 mb-2 align-items-center">
-              <Form.Select size="sm" style={{ maxWidth: 260 }} value={it.product} onChange={(e) => selectOrderProduct(idx, e.target.value)}>
-                <option value="">Select product (optional)</option>
-                {products.map((p) => <option key={p._id} value={p._id}>{p.name} — {formatMoney(p.sellingPrice)}</option>)}
-              </Form.Select>
-              {!it.product && (
-                <Form.Control size="sm" placeholder="Product name" value={it.name} onChange={(e) => { const items = [...newOrder.items]; items[idx] = { ...items[idx], name: e.target.value }; setNewOrder({ ...newOrder, items }) }} />
-              )}
-              <Form.Control size="sm" type="number" min="1" style={{ width: 70 }} value={it.quantity} onChange={(e) => { const items = [...newOrder.items]; items[idx] = { ...items[idx], quantity: e.target.value }; setNewOrder({ ...newOrder, items }) }} />
-              <Form.Control size="sm" type="number" min="0" style={{ width: 110 }} placeholder="Unit price" value={it.price} onChange={(e) => { const items = [...newOrder.items]; items[idx] = { ...items[idx], price: e.target.value }; setNewOrder({ ...newOrder, items }) }} />
-              <span className="small text-muted" style={{ minWidth: 80, textAlign: 'right' }}>
-                {formatMoney((Number(it.quantity) || 0) * (Number(it.price) || (it.product ? products.find((p) => p._id === it.product)?.sellingPrice || 0 : 0)))}
-              </span>
-              {newOrder.items.length > 1 && <Button size="sm" variant="outline-danger" onClick={() => removeNewOrderItem(idx)}><i className="bi bi-x" /></Button>}
+            <div key={idx} className="mb-2">
+              <div className="d-flex gap-2 align-items-center flex-wrap">
+                <div className="position-relative" style={{ minWidth: 200, flex: '1 1 260px', maxWidth: 320 }}>
+                  {it.product ? (
+                    <div className="d-flex align-items-center gap-2 border rounded px-2 py-1 bg-light small">
+                      <i className="bi bi-box-seam text-muted" />
+                      <span className="text-truncate">{products.find((p) => p._id === it.product)?.name || it.name}</span>
+                      <Button size="sm" variant="link" className="p-0 ms-auto text-danger text-decoration-none" onClick={() => clearItemProduct(idx)} title="Remove product">
+                        <i className="bi bi-x-lg" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      <InputGroup size="sm">
+                        <InputGroup.Text><i className="bi bi-search" /></InputGroup.Text>
+                        <Form.Control
+                          placeholder="Search product or type name..."
+                          value={it.search || ''}
+                          onChange={(e) => updateItem(idx, { search: e.target.value, name: e.target.value })}
+                          onFocus={() => setItemSearchOpen((prev) => ({ ...prev, [idx]: true }))}
+                          onBlur={() => setTimeout(() => setItemSearchOpen((prev) => ({ ...prev, [idx]: false })), 200)}
+                          autoFocus={idx === newOrder.items.length - 1}
+                        />
+                      </InputGroup>
+                      {itemSearchOpen[idx] && filteredItemProducts(it.search).length > 0 && (
+                        <ListGroup className="position-absolute w-100 shadow-sm" style={{ zIndex: 20 }}>
+                          {filteredItemProducts(it.search).slice(0, 8).map((p) => (
+                            <ListGroup.Item action key={p._id} className="py-1 px-2 small" onClick={() => selectOrderProduct(idx, p._id)}>
+                              <div className="d-flex justify-content-between gap-2">
+                                <span className="text-truncate"><i className="bi bi-box-seam me-1 text-muted" style={{ fontSize: '0.7rem' }} />{p.name}</span>
+                                <span className="text-muted flex-shrink-0" style={{ fontSize: '0.7rem' }}>{formatMoney(p.sellingPrice)} · {p.quantity} in stock</span>
+                              </div>
+                            </ListGroup.Item>
+                          ))}
+                        </ListGroup>
+                      )}
+                      {filteredItemProducts(it.search).length === 0 && (
+                        <div className="small text-muted mt-1">No products found. Type a custom product name & unit price.</div>
+                      )}
+                    </>
+                  )}
+                </div>
+                <Form.Control size="sm" type="number" min="1" style={{ width: 70 }} value={it.quantity} onChange={(e) => updateItem(idx, { quantity: e.target.value })} />
+                <Form.Control size="sm" type="number" min="0" style={{ width: 110 }} placeholder="Unit price" value={it.price} onChange={(e) => updateItem(idx, { price: e.target.value })} />
+                <span className="small text-muted" style={{ minWidth: 80, textAlign: 'right', flexShrink: 0 }}>
+                  {formatMoney((Number(it.quantity) || 0) * (Number(it.price) || (it.product ? products.find((p) => p._id === it.product)?.sellingPrice || 0 : 0)))}
+                </span>
+                {newOrder.items.length > 1 && <Button size="sm" variant="outline-danger" onClick={() => removeNewOrderItem(idx)}><i className="bi bi-x" /></Button>}
+              </div>
             </div>
           ))}
 

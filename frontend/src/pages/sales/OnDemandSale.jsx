@@ -7,7 +7,6 @@ import { formatMoney } from '../../context/LanguageContext'
 export default function OnDemandSale() {
   const navigate = useNavigate()
   const [products, setProducts] = useState([])
-  const [searchedProducts, setSearchedProducts] = useState([])
   const [productSearch, setProductSearch] = useState('')
   const [suppliers, setSuppliers] = useState([])
   const [supplier, setSupplier] = useState(null)
@@ -36,10 +35,7 @@ export default function OnDemandSale() {
 
   useEffect(() => {
     api.get('/products', { params: { limit: 200, status: 'ACTIVE' } })
-      .then((r) => {
-        setProducts(r.data.data.products)
-        setSearchedProducts(r.data.data.products.slice(0, 12))
-      })
+      .then((r) => setProducts(r.data.data.products))
       .catch((e) => setError(getError(e)))
     api.get('/suppliers')
       .then((r) => setSuppliers(r.data.data))
@@ -293,13 +289,18 @@ export default function OnDemandSale() {
           <Card body className="mb-3">
             <div className="d-flex justify-content-between align-items-center mb-2">
               <Form.Label className="small fw-semibold mb-0">3. Products to source</Form.Label>
-              <Form.Control size="sm" placeholder="Search by name or SKU..."
-                value={productSearch}
-                onChange={(e) => { setProductSearch(e.target.value); setSearchedProducts(filteredProducts) }}
-                style={{ maxWidth: 260, border: 'none', borderBottom: '1px solid #dee2e6', borderRadius: 0 }} />
             </div>
+            <InputGroup className="mb-3">
+              <InputGroup.Text><i className="bi bi-search" /></InputGroup.Text>
+              <Form.Control
+                placeholder="Search by name, SKU or barcode..."
+                value={productSearch}
+                onChange={(e) => setProductSearch(e.target.value)}
+                autoFocus
+              />
+            </InputGroup>
             <Row className="g-2" xs={2} md={3}>
-              {(productSearch.trim() ? filteredProducts : searchedProducts.length ? searchedProducts : products.slice(0, 12)).map((p) => (
+              {filteredProducts.map((p) => (
                 <Col key={p._id}>
                   <Card className="pos-product-card" onClick={() => addToCart(p)}>
                     <Card.Body className="p-2">
@@ -320,7 +321,7 @@ export default function OnDemandSale() {
                   </Card>
                 </Col>
               ))}
-              {productSearch.trim() && filteredProducts.length === 0 && <Col className="text-center text-muted py-4">No products match your search.</Col>}
+              {filteredProducts.length === 0 && <Col className="text-center text-muted py-4">No products found.</Col>}
             </Row>
           </Card>
         </Col>
