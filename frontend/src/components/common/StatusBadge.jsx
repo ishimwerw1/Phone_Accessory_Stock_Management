@@ -4,6 +4,7 @@ const MAP = {
   PAID: { cls: 'badge-soft-success', key: 'paid' },
   PARTIALLY_PAID: { cls: 'badge-soft-warning', key: 'partiallyPaid' },
   UNPAID: { cls: 'badge-soft-danger', key: 'unpaid' },
+  RETURNED: { cls: 'badge-soft-secondary', key: 'returned' },
   ACTIVE: { cls: 'badge-soft-info', key: 'active' },
   INACTIVE: { cls: 'badge-soft-secondary', key: 'inactive' },
   PENDING: { cls: 'badge-soft-warning', key: 'pendingOrders' },

@@ -2,6 +2,7 @@ const { Payment, Loan, LoanPayment, Sale } = require('../models');
 const { success, error, asyncHandler } = require('../utils/response');
 const { nextNumber } = require('../utils/helpers');
 const { audit } = require('../services/auditService');
+const { computeItemStatus, recomputeLoan, allocateFIFO, ensureLoanItems } = require('../services/loanItemService');
 
 exports.getAll = asyncHandler(async (req, res) => {
   const { page = 1, limit = 20, from, to, method, customer } = req.query;
@@ -32,11 +33,37 @@ exports.repayLoan = asyncHandler(async (req, res) => {
   if (loan.status === 'PAID') return error(res, 'Loan is already fully paid');
   if (money > loan.outstanding) return error(res, `Repayment cannot exceed outstanding balance (${loan.outstanding} RWF)`);
 
+  await ensureLoanItems(loan);
+
+  const allocations = allocateFIFO(loan.loanItems || [], money);
+  const payDate = date || Date.now();
+  for (const { item, allocated } of allocations) {
+    const prevItemOutstanding = item.outstanding;
+    item.amountPaid += allocated;
+    item.outstanding = Math.max(0, prevItemOutstanding - allocated);
+    item.status = computeItemStatus(item);
+    await LoanPayment.create({
+      loan: loan._id,
+      loanNumber: loan.loanNumber,
+      customer: loan.customer,
+      loanItem: item._id,
+      product: item.product,
+      itemName: item.name,
+      amount: allocated,
+      previousOutstanding: prevItemOutstanding,
+      newOutstanding: item.outstanding,
+      remainingAfter: item.outstanding,
+      method,
+      reference,
+      note,
+      receivedBy: req.user._id,
+      date: payDate,
+    });
+  }
+
   const prevOutstanding = loan.outstanding;
-  const newOutstanding = prevOutstanding - money;
-  loan.amountPaid += money;
-  loan.outstanding = newOutstanding;
-  loan.status = newOutstanding <= 0 ? 'PAID' : 'PARTIALLY_PAID';
+  const newOutstanding = Math.max(0, prevOutstanding - money);
+  recomputeLoan(loan);
   await loan.save();
 
   if (loan.sale) {
@@ -50,20 +77,6 @@ exports.repayLoan = asyncHandler(async (req, res) => {
     }
   }
 
-  await LoanPayment.create({
-    loan: loan._id,
-    loanNumber: loan.loanNumber,
-    customer: loan.customer,
-    amount: money,
-    previousOutstanding: prevOutstanding,
-    newOutstanding,
-    method,
-    reference,
-    note,
-    receivedBy: req.user._id,
-    date: date || Date.now(),
-  });
-
   const paymentNumber = await nextNumber('PAY');
   await Payment.create({
     paymentNumber,
@@ -75,7 +88,7 @@ exports.repayLoan = asyncHandler(async (req, res) => {
     reference,
     status: 'PAID',
     receivedBy: req.user._id,
-    date: date || Date.now(),
+    date: payDate,
   });
 
   const { notify } = require('../services/notificationService');

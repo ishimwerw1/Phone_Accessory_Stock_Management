@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Card, Row, Col, Table, Button, Form, Alert, Modal } from 'react-bootstrap'
+import { Card, Row, Col, Table, Button, Form, Alert, Modal, Badge } from 'react-bootstrap'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import api, { getError } from '../../api/client'
 import StatusBadge from '../../components/common/StatusBadge'
 import ConfirmDialog from '../../components/common/ConfirmDialog'
 import Loading from '../../components/common/Loading'
+import LoanItemActions from '../../components/loans/LoanItemActions'
 import { formatMoney } from '../../context/LanguageContext'
 import { useAuth } from '../../context/AuthContext'
 
@@ -14,6 +15,7 @@ export default function LoanDetail() {
   const { hasPermission } = useAuth()
   const [data, setData] = useState(null)
   const [company, setCompany] = useState(null)
+  const [products, setProducts] = useState([])
   const [showRepay, setShowRepay] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [showCancel, setShowCancel] = useState(false)
@@ -43,6 +45,12 @@ export default function LoanDetail() {
     }).catch(() => navigate('/loans'))
   }
   useEffect(load, [id, navigate])
+
+  useEffect(() => {
+    api.get('/products', { params: { limit: 200, status: 'ACTIVE' } })
+      .then((r) => setProducts(r.data.data.products))
+      .catch(() => {})
+  }, [])
 
   if (!data) return <Loading full />
   const { loan, repayments, sale } = data
@@ -144,18 +152,46 @@ export default function LoanDetail() {
       <Row className="g-3">
         <Col lg={7}>
           <Card className="mb-3">
-            <Card.Header className="bg-white fw-semibold small"><i className="bi bi-box-seam me-2 text-primary" />Products Purchased</Card.Header>
-            <Table size="sm" responsive className="mb-0 align-middle">
-              <thead><tr><th>Product</th><th className="text-center">Qty</th><th className="text-end">Unit Price</th></tr></thead>
+            <Card.Header className="bg-white fw-semibold small"><i className="bi bi-box-seam me-2 text-primary" />Products (per-item status & repayment)</Card.Header>
+            <Table size="sm" hover responsive className="mb-0 align-middle bg-white">
+              <thead><tr>
+                <th>Product</th>
+                <th className="text-center">Qty</th>
+                <th className="text-end">Unit Price</th>
+                <th className="text-end">Total</th>
+                <th className="text-end">Paid</th>
+                <th className="text-end">Remaining</th>
+                <th className="text-center">Status</th>
+                <th className="text-center">Actions</th>
+              </tr></thead>
               <tbody>
-                {(!sale?.items || sale.items.length === 0) && (
-                  <tr><td colSpan={3} className="text-center text-muted py-3">No product details available</td></tr>
+                {loan.loanItems?.length === 0 && (
+                  <tr><td colSpan={8} className="text-center text-muted py-3">No product details available</td></tr>
                 )}
-                {(sale?.items || []).map((item, i) => (
-                  <tr key={i}>
-                    <td>{item.name}</td>
+                {(loan.loanItems || []).map((item) => (
+                  <tr key={item._id}>
+                    <td>
+                      <div className="fw-semibold small">{item.name}</div>
+                      {item.sku && <small className="text-muted">{item.sku}</small>}
+                      {item.returned && <Badge bg="" className="badge-soft-secondary ms-1">Returned</Badge>}
+                    </td>
                     <td className="text-center">{item.quantity}</td>
                     <td className="text-end">{formatMoney(item.price)}</td>
+                    <td className="text-end fw-semibold">{formatMoney(item.total)}</td>
+                    <td className="text-end fw-semibold text-success">{formatMoney(item.amountPaid)}</td>
+                    <td className="text-end fw-semibold text-danger">{formatMoney(item.outstanding)}</td>
+                    <td className="text-center"><StatusBadge value={item.status} /></td>
+                    <td className="text-center">
+                      <LoanItemActions
+                        loan={loan}
+                        item={item}
+                        products={products}
+                        payments={repayments}
+                        canRepay={canRepay}
+                        canEdit={hasPermission('loans.update')}
+                        onChanged={load}
+                      />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -165,12 +201,13 @@ export default function LoanDetail() {
           <Card>
             <Card.Header className="bg-white fw-semibold small"><i className="bi bi-clock-history me-2 text-success" />Repayment History ({repayments.length})</Card.Header>
             <Table size="sm" hover responsive className="mb-0 align-middle">
-              <thead><tr><th>Date</th><th>Amount</th><th>Method</th><th>Ref</th><th>Received By</th></tr></thead>
+              <thead><tr><th>Date</th><th>Product</th><th>Amount</th><th>Method</th><th>Ref</th><th>Received By</th></tr></thead>
               <tbody>
-                {repayments.length === 0 && <tr><td colSpan={5} className="text-center text-muted py-3">No repayments yet</td></tr>}
+                {repayments.length === 0 && <tr><td colSpan={6} className="text-center text-muted py-3">No repayments yet</td></tr>}
                 {repayments.map((p) => (
                   <tr key={p._id}>
                     <td className="small">{new Date(p.date || p.createdAt).toLocaleString()}</td>
+                    <td className="small text-muted">{p.itemName || <em>General</em>}</td>
                     <td className="fw-semibold text-success">{formatMoney(p.amount)}</td>
                     <td><StatusBadge value={p.method} /></td>
                     <td className="small">{p.reference || '-'}</td>
@@ -350,23 +387,26 @@ export default function LoanDetail() {
         <strong className="small text-uppercase text-muted d-block mb-1">Products</strong>
         <table className="table table-sm table-bordered">
           <thead style={{ background: '#f8f9fb' }}>
-            <tr>
-              <th>#</th><th>Product</th>
+            <tr><th>#</th><th>Product</th>
               <th className="text-center">Qty</th><th className="text-end">Unit Price</th>
-              <th className="text-end">Subtotal</th>
+              <th className="text-end">Subtotal</th><th className="text-end">Paid</th>
+              <th className="text-end">Remaining</th><th className="text-center">Status</th>
             </tr>
           </thead>
           <tbody>
-            {(!sale?.items || sale.items.length === 0) && (
-              <tr><td colSpan={5} className="text-center text-muted py-3">No product details available</td></tr>
+            {loan.loanItems?.length === 0 && (
+              <tr><td colSpan={8} className="text-center text-muted py-3">No product details available</td></tr>
             )}
-            {(sale?.items || []).map((item, i) => (
-              <tr key={i}>
+            {(loan.loanItems || []).map((item, i) => (
+              <tr key={item._id}>
                 <td>{i + 1}</td>
-                <td>{item.name}{item.sku && <span className="text-muted small"> · {item.sku}</span>}</td>
+                <td>{item.name}{item.sku && <span className="text-muted small"> · {item.sku}</span>}{item.returned && <span className="text-muted small"> (returned)</span>}</td>
                 <td className="text-center">{item.quantity}</td>
                 <td className="text-end">{formatMoney(item.price)}</td>
-                <td className="text-end fw-semibold">{formatMoney(item.subtotal)}</td>
+                <td className="text-end fw-semibold">{formatMoney(item.total)}</td>
+                <td className="text-end text-success">{formatMoney(item.amountPaid)}</td>
+                <td className="text-end text-danger">{formatMoney(item.outstanding)}</td>
+                <td className="text-center"><StatusBadge value={item.status} /></td>
               </tr>
             ))}
           </tbody>
@@ -391,13 +431,14 @@ export default function LoanDetail() {
         <strong className="small text-uppercase text-muted d-block mb-1">Repayment History</strong>
         <table className="table table-sm table-bordered">
           <thead style={{ background: '#f8f9fb' }}>
-            <tr><th>Date</th><th>Amount</th><th>Method</th><th>Received By</th></tr>
+            <tr><th>Date</th><th>Product</th><th>Amount</th><th>Method</th><th>Received By</th></tr>
           </thead>
           <tbody>
-            {repayments.length === 0 && <tr><td colSpan={4} className="text-center text-muted py-3">No repayments yet</td></tr>}
+            {repayments.length === 0 && <tr><td colSpan={5} className="text-center text-muted py-3">No repayments yet</td></tr>}
             {repayments.map((p) => (
               <tr key={p._id}>
                 <td className="small">{new Date(p.date || p.createdAt).toLocaleString()}</td>
+                <td className="small text-muted">{p.itemName || <em>General</em>}</td>
                 <td className="fw-semibold text-success">{formatMoney(p.amount)}</td>
                 <td><StatusBadge value={p.method} /></td>
                 <td className="small">{p.receivedBy?.name}</td>

@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Card, Row, Col, Form, Button, Badge } from 'react-bootstrap'
-import { Link } from 'react-router-dom'
-import api from '../../api/client'
+import { Card, Row, Col, Form, Button, Badge, Dropdown, Modal } from 'react-bootstrap'
+import { useNavigate } from 'react-router-dom'
+import api, { getError } from '../../api/client'
 import DataTable from '../../components/common/DataTable'
 import StatusBadge from '../../components/common/StatusBadge'
 import StatCard from '../../components/common/StatCard'
 import { formatMoney } from '../../context/LanguageContext'
 
 export default function Loans() {
+  const navigate = useNavigate()
   const [accounts, setAccounts] = useState([])
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -18,6 +19,9 @@ export default function Loans() {
   const [status, setStatus] = useState('ALL')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
+  const [editAccount, setEditAccount] = useState(null)
+  const [editForm, setEditForm] = useState({ name: '', phone: '', email: '', address: '' })
+  const [savingEdit, setSavingEdit] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -41,6 +45,47 @@ export default function Loans() {
   }, [page, search, status, from, to])
 
   useEffect(() => { load() }, [load])
+
+  const openEdit = (a) => {
+    setEditAccount(a)
+    setEditForm({ name: a.customerName || '', phone: a.customerPhone || '', email: '', address: '' })
+  }
+
+  const saveEdit = async (e) => {
+    e.preventDefault()
+    if (!editAccount?.customer) return
+    if (!editForm.name.trim() || !editForm.phone.trim()) return
+    setSavingEdit(true)
+    try {
+      await api.put(`/customers/${editAccount.customer}`, editForm)
+      setEditAccount(null)
+      load()
+    } catch (err) {
+      alert(getError(err))
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
+  const accountUrl = (a) => `/loans/accounts/${a.customer || 'void'}`
+
+  const actionsMenu = (a) => (
+    <Dropdown align="end">
+      <Dropdown.Toggle variant="light" size="sm" className="py-0 px-1 border">
+        <i className="bi bi-three-dots" />
+      </Dropdown.Toggle>
+      <Dropdown.Menu>
+        <Dropdown.Item onClick={() => navigate(accountUrl(a))}><i className="bi bi-cash-coin me-2" />View Loan Details</Dropdown.Item>
+        <Dropdown.Item onClick={() => navigate(`${accountUrl(a)}?tab=products`)}><i className="bi bi-box-seam me-2" />View All Products</Dropdown.Item>
+        <Dropdown.Item onClick={() => navigate(`${accountUrl(a)}?tab=paid`)}><i className="bi bi-check-circle me-2" />View Paid Products</Dropdown.Item>
+        <Dropdown.Item onClick={() => navigate(`${accountUrl(a)}?tab=unpaid`)}><i className="bi bi-exclamation-circle me-2" />View Unpaid Products</Dropdown.Item>
+        <Dropdown.Item onClick={() => navigate(`${accountUrl(a)}?tab=payments`)}><i className="bi bi-clock-history me-2" />Payment History</Dropdown.Item>
+        <Dropdown.Divider />
+        {a.customer && <Dropdown.Item onClick={() => openEdit(a)}><i className="bi bi-person-gear me-2" />Edit Customer</Dropdown.Item>}
+        <Dropdown.Item onClick={() => navigate(`${accountUrl(a)}?print=1`)}><i className="bi bi-printer me-2" />Print Loan Invoice</Dropdown.Item>
+      </Dropdown.Menu>
+    </Dropdown>
+  )
 
   return (
     <div>
@@ -89,9 +134,7 @@ export default function Loans() {
               <strong className={a.remainingBalance > 0 ? 'text-danger' : 'text-success'}>{formatMoney(a.remainingBalance)}</strong>
             )},
             { key: 'status', label: 'Status', render: (a) => <StatusBadge value={a.status} /> },
-            { key: 'actions', label: '', render: (a) => (
-              <Link to={`/loans/accounts/${a.customer || 'void'}`} className="btn btn-sm btn-primary"><i className="bi bi-eye me-1" />View</Link>
-            )}
+            { key: 'actions', label: '', render: (a) => actionsMenu(a) }
           ]}
           data={accounts}
           loading={loading}
@@ -125,7 +168,7 @@ export default function Loans() {
                       <td className="fw-medium small">{a.customerName}</td>
                       <td><code className="small">{a.customerPhone}</code></td>
                       <td className="text-end fw-bold text-danger">{formatMoney(a.remainingBalance)}</td>
-                      <td className="text-end"><Link to={`/loans/accounts/${a.customer || 'void'}`} className="btn btn-sm btn-primary">View</Link></td>
+                      <td className="text-end">{actionsMenu(a)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -134,6 +177,36 @@ export default function Loans() {
           </Card>
         </>
       )}
+
+      <Modal show={!!editAccount} onHide={() => !savingEdit && setEditAccount(null)} centered>
+        <Form onSubmit={saveEdit}>
+          <Modal.Header closeButton={!savingEdit}><Modal.Title className="fs-6 fw-bold"><i className="bi bi-person-gear me-2" />Edit Customer</Modal.Title></Modal.Header>
+          <Modal.Body>
+            <Form.Group className="mb-2">
+              <Form.Label className="small fw-semibold">Customer Name *</Form.Label>
+              <Form.Control value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} required />
+            </Form.Group>
+            <Form.Group className="mb-2">
+              <Form.Label className="small fw-semibold">Phone *</Form.Label>
+              <Form.Control value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} required />
+            </Form.Group>
+            <Form.Group className="mb-2">
+              <Form.Label className="small fw-semibold">Email</Form.Label>
+              <Form.Control value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} />
+            </Form.Group>
+            <Form.Group>
+              <Form.Label className="small fw-semibold">Address</Form.Label>
+              <Form.Control value={editForm.address} onChange={(e) => setEditForm({ ...editForm, address: e.target.value })} />
+            </Form.Group>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="light" type="button" onClick={() => setEditAccount(null)} disabled={savingEdit}>Cancel</Button>
+            <Button type="submit" disabled={savingEdit}>
+              {savingEdit ? <><span className="spinner-border spinner-border-sm me-1" />Saving...</> : 'Save Changes'}
+            </Button>
+          </Modal.Footer>
+        </Form>
+      </Modal>
     </div>
   )
 }

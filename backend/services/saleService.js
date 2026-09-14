@@ -4,6 +4,7 @@ const { nextNumber } = require('../utils/helpers');
 const { notify } = require('./notificationService');
 const { audit } = require('./auditService');
 const { ROLES } = require('../utils/constants');
+const { buildLoanItems } = require('./loanItemService');
 
 const withTransaction = async (fn) => {
   const session = await mongoose.startSession();
@@ -146,6 +147,7 @@ const createSale = async (payload, user) => {
         totalAmount: total,
         amountPaid: paid,
         outstanding,
+        loanItems: buildLoanItems(saleItems, { upfrontPaid: paid, itemDate: new Date(), discount }),
         dueDate: dueDate || new Date(Date.now() + 30 * 24 * 3600 * 1000),
         status: outstanding <= 0 ? 'PAID' : 'ACTIVE',
         createdBy: user._id,
@@ -336,6 +338,7 @@ const createOnDemandSale = async (payload, user) => {
         totalAmount: total,
         amountPaid: paid,
         outstanding,
+        loanItems: buildLoanItems(saleItems, { upfrontPaid: paid, itemDate: new Date(), discount }),
         dueDate: dueDate || new Date(Date.now() + 30 * 24 * 3600 * 1000),
         status: outstanding <= 0 ? 'PAID' : 'ACTIVE',
         createdBy: user._id,
@@ -378,7 +381,17 @@ const cancelSale = async (saleId, user) => {
     if (loan && loan.amountPaid > 0) {
       throw Object.assign(new Error('Cannot cancel a sale with a loan that has repayments'), { status: 400 });
     }
-    if (loan) await Loan.updateOne({ _id: loan._id }, { status: 'CANCELLED' }, opt(session));
+    if (loan) {
+      const returnedOn = new Date();
+      for (const item of (loan.loanItems || [])) {
+        item.returned = true;
+        item.returnedOn = returnedOn;
+        item.returnReason = `Sale ${sale.saleNumber} cancelled`;
+        item.status = 'RETURNED';
+      }
+      loan.status = 'CANCELLED';
+      await loan.save({ session });
+    }
     for (const it of sale.items) {
       const product = await Product.findById(it.product, null, opt(session));
       if (product) {
