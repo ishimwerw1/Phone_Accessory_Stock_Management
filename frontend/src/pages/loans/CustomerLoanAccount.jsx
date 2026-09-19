@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Card, Row, Col, Table, Button, Form, Modal, Nav, Badge } from 'react-bootstrap'
+import { Card, Row, Col, Table, Button, Form, Modal, Nav, Badge, Dropdown } from 'react-bootstrap'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import api, { getError } from '../../api/client'
 import StatusBadge from '../../components/common/StatusBadge'
@@ -92,21 +92,21 @@ export default function CustomerLoanAccount() {
   }
 
   const customerMenu = (
-    <div className="dropdown">
-      <button className="btn btn-light border dropdown-toggle no-caret d-flex align-items-center" data-bs-toggle="dropdown" aria-expanded="false" title="Customer actions">
+    <Dropdown align="end" popperConfig={{ strategy: 'fixed' }}>
+      <Dropdown.Toggle variant="light" className="border no-caret btn-icon-action" title="Customer actions">
         <i className="bi bi-three-dots" />
-      </button>
-      <div className="dropdown-menu dropdown-menu-end shadow-sm" style={{ minWidth: 250 }}>
-        <button className="dropdown-item" onClick={() => openTab('overview')}><i className="bi bi-cash-coin me-2" />View Loan Details</button>
-        <button className="dropdown-item" onClick={() => openTab('products')}><i className="bi bi-box-seam me-2" />View All Products</button>
-        <button className="dropdown-item" onClick={() => openTab('paid')}><i className="bi bi-check-circle me-2" />View Paid Products</button>
-        <button className="dropdown-item" onClick={() => openTab('unpaid')}><i className="bi bi-exclamation-circle me-2" />View Unpaid Products</button>
-        <button className="dropdown-item" onClick={() => openTab('payments')}><i className="bi bi-clock-history me-2" />Payment History</button>
-        <div className="dropdown-divider" />
-        {customer && <button className="dropdown-item" onClick={openEditCustomer}><i className="bi bi-person-gear me-2" />Edit Customer</button>}
-        <button className="dropdown-item" onClick={() => window.print()}><i className="bi bi-printer me-2" />Print Loan Invoice</button>
-      </div>
-    </div>
+      </Dropdown.Toggle>
+      <Dropdown.Menu className="shadow-sm" style={{ minWidth: 250 }}>
+        <Dropdown.Item onClick={() => openTab('overview')}><i className="bi bi-cash-coin me-2" />View Loan Details</Dropdown.Item>
+        <Dropdown.Item onClick={() => openTab('products')}><i className="bi bi-box-seam me-2" />View All Products</Dropdown.Item>
+        <Dropdown.Item onClick={() => openTab('paid')}><i className="bi bi-check-circle me-2" />View Paid Products</Dropdown.Item>
+        <Dropdown.Item onClick={() => openTab('unpaid')}><i className="bi bi-exclamation-circle me-2" />View Unpaid Products</Dropdown.Item>
+        <Dropdown.Item onClick={() => openTab('payments')}><i className="bi bi-clock-history me-2" />Payment History</Dropdown.Item>
+        <Dropdown.Divider />
+        {customer && <Dropdown.Item onClick={openEditCustomer}><i className="bi bi-person-gear me-2" />Edit Customer</Dropdown.Item>}
+        <Dropdown.Item onClick={() => window.print()}><i className="bi bi-printer me-2" />Print Loan Invoice</Dropdown.Item>
+      </Dropdown.Menu>
+    </Dropdown>
   )
 
   return (

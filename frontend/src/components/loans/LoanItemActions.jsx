@@ -102,11 +102,11 @@ export default function LoanItemActions({ loan, item, products = [], payments = 
 
   return (
     <>
-      <Dropdown align="end">
-        <Dropdown.Toggle variant="light" size="sm" className="py-0 px-1 border">
+      <Dropdown align="end" popperConfig={{ strategy: 'fixed' }}>
+        <Dropdown.Toggle variant="light" size="sm" className="py-0 px-1 border no-caret btn-icon-action" title="Actions">
           <i className="bi bi-three-dots" />
         </Dropdown.Toggle>
-        <Dropdown.Menu>
+        <Dropdown.Menu className="shadow-sm">
           <Dropdown.Item onClick={() => setShowDetails(true)}><i className="bi bi-eye me-2" />View Details</Dropdown.Item>
           {!returned && canRepay && (item.outstanding ?? itemRemaining) > 0 && (
             <Dropdown.Item onClick={openPay}><i className="bi bi-cash-stack me-2 text-success" />Record Payment</Dropdown.Item>

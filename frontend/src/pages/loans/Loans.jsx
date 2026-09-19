@@ -70,11 +70,11 @@ export default function Loans() {
   const accountUrl = (a) => `/loans/accounts/${a.customer || 'void'}`
 
   const actionsMenu = (a) => (
-    <Dropdown align="end">
-      <Dropdown.Toggle variant="light" size="sm" className="py-0 px-1 border">
+    <Dropdown align="end" popperConfig={{ strategy: 'fixed' }}>
+      <Dropdown.Toggle variant="light" size="sm" className="py-0 px-1 border no-caret btn-icon-action" title="Actions">
         <i className="bi bi-three-dots" />
       </Dropdown.Toggle>
-      <Dropdown.Menu>
+      <Dropdown.Menu className="shadow-sm">
         <Dropdown.Item onClick={() => navigate(accountUrl(a))}><i className="bi bi-cash-coin me-2" />View Loan Details</Dropdown.Item>
         <Dropdown.Item onClick={() => navigate(`${accountUrl(a)}?tab=products`)}><i className="bi bi-box-seam me-2" />View All Products</Dropdown.Item>
         <Dropdown.Item onClick={() => navigate(`${accountUrl(a)}?tab=paid`)}><i className="bi bi-check-circle me-2" />View Paid Products</Dropdown.Item>
@@ -103,7 +103,7 @@ export default function Loans() {
       )}
 
       <Card body>
-        <div className="d-flex flex-wrap gap-2 mb-3">
+        <div className="d-flex flex-wrap gap-2 mb-3 filter-toolbar">
           <Form.Control size="sm" placeholder="Search customer name or phone..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1) }} style={{ maxWidth: 280 }} />
           <Form.Select size="sm" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1) }} style={{ maxWidth: 170 }}>
             {['ALL', 'ACTIVE', 'PARTIALLY_PAID', 'PAID', 'OVERDUE'].map((s) => (

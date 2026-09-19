@@ -123,7 +123,7 @@ export default function LoanDetail() {
         <h4 className="fw-bold mb-0" style={{ color: '#0d3b66' }}>
           <i className="bi bi-cash-coin me-2" />{loan.loanNumber} <StatusBadge value={loan.status} />
         </h4>
-        <div className="d-flex gap-2 no-print">
+        <div className="d-flex gap-2 flex-wrap no-print">
           <Button variant="primary" onClick={() => window.print()}><i className="bi bi-printer me-1" />Print</Button>
           <Button variant="light" className="border" onClick={() => navigate('/loans')}><i className="bi bi-arrow-left me-1" />Back</Button>
           {canRepay && !['PAID', 'CANCELLED'].includes(loan.status) && (

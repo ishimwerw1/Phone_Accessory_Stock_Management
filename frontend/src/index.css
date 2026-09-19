@@ -213,6 +213,35 @@ body {
 
 html, body { overflow-x: hidden; }
 
+/* ---------- Row action dropdowns (three-dots) ---------- */
+.no-caret::after { display: none !important; }
+.btn-icon-action {
+  min-width: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.dropdown-menu { max-width: calc(100vw - 1.5rem); }
+.dropdown-item {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Responsive tables: keep columns readable and scrollable instead of squishing */
+.table-responsive .table { min-width: max-content; }
+
+/* Filter / search toolbars fill available width on small screens */
+@media (max-width: 575.98px) {
+  .filter-toolbar .form-control,
+  .filter-toolbar .form-select {
+    flex: 1 1 44%;
+    width: auto;
+    max-width: none !important;
+  }
+  .filter-toolbar .btn { flex: 1 1 auto; }
+}
+
 /* ---------- Phones (<= 576px) ---------- */
 @media (max-width: 575.98px) {
   body { font-size: 0.95rem; }
@@ -231,6 +260,8 @@ html, body { overflow-x: hidden; }
     padding-right: 0.9rem;
   }
   .btn-sm { min-height: 36px; }
+  .btn-icon-action { min-width: 44px; min-height: 40px; }
+  .dropdown-item { padding-top: 0.6rem; padding-bottom: 0.6rem; white-space: normal; }
 
   /* Sidebar drawer takes most of the screen */
   .bcml-sidebar { width: min(var(--bcml-sidebar-width), 84vw); }
@@ -292,7 +323,7 @@ html, body { overflow-x: hidden; }
 
 @keyframes bcml-fade-up {
   from { opacity: 0; transform: translateY(14px); }
-  to { opacity: 1; transform: translateY(0); }
+  to { opacity: 1; transform: none; }
 }
 @keyframes bcml-fade-in {
   from { opacity: 0; }
