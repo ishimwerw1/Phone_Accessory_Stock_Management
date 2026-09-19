@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { Dropdown, Modal, Form, Button, Alert, Table, Row, Col } from 'react-bootstrap'
+import { Modal, Form, Button, Alert, Table, Row, Col } from 'react-bootstrap'
 import api, { getError } from '../../api/client'
 import StatusBadge from '../common/StatusBadge'
 import ConfirmDialog from '../common/ConfirmDialog'
 import ProductSelect from '../common/ProductSelect'
+import ActionsMenu from '../common/ActionsMenu'
 import { formatMoney } from '../../context/LanguageContext'
 
 const METHODS = [['CASH', 'Cash'], ['MOMO', 'MoMo'], ['BANK', 'Bank']]
@@ -102,25 +103,19 @@ export default function LoanItemActions({ loan, item, products = [], payments = 
 
   return (
     <>
-      <Dropdown align="end" popperConfig={{ strategy: 'fixed' }}>
-        <Dropdown.Toggle variant="light" size="sm" className="py-0 px-1 border no-caret btn-icon-action" title="Actions">
-          <i className="bi bi-three-dots" />
-        </Dropdown.Toggle>
-        <Dropdown.Menu className="shadow-sm">
-          <Dropdown.Item onClick={() => setShowDetails(true)}><i className="bi bi-eye me-2" />View Details</Dropdown.Item>
-          {!returned && canRepay && (item.outstanding ?? itemRemaining) > 0 && (
-            <Dropdown.Item onClick={openPay}><i className="bi bi-cash-stack me-2 text-success" />Record Payment</Dropdown.Item>
-          )}
-          {!returned && canEdit && (
-            <Dropdown.Item onClick={openEdit}><i className="bi bi-pencil me-2" />Edit</Dropdown.Item>
-          )}
-          {!returned && canEdit && (
-            <Dropdown.Item onClick={() => { setError(''); setShowReturn(true) }} className="text-danger">
-              <i className="bi bi-arrow-return-left me-2" />Remove / Return Product
-            </Dropdown.Item>
-          )}
-        </Dropdown.Menu>
-      </Dropdown>
+      <ActionsMenu
+        title="Product actions"
+        items={[
+          { label: 'View Details', icon: 'bi-eye', onClick: () => setShowDetails(true) },
+          { show: !returned && canRepay && (item.outstanding ?? itemRemaining) > 0, label: 'Record Payment', icon: 'bi-cash-stack', iconClass: 'text-success', onClick: openPay },
+          ...(!returned && canEdit
+            ? [
+              { label: 'Edit', icon: 'bi-pencil', onClick: openEdit },
+              { label: 'Remove / Return Product', icon: 'bi-arrow-return-left', danger: true, onClick: () => { setError(''); setShowReturn(true) } },
+            ]
+            : []),
+        ]}
+      />
 
       {/* Details */}
       <Modal show={showDetails} onHide={() => setShowDetails(false)} centered size="lg">

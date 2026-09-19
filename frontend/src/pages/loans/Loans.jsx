@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Card, Row, Col, Form, Button, Badge, Dropdown, Modal } from 'react-bootstrap'
+import { Card, Row, Col, Form, Button, Badge, Modal } from 'react-bootstrap'
 import { useNavigate } from 'react-router-dom'
 import api, { getError } from '../../api/client'
 import DataTable from '../../components/common/DataTable'
 import StatusBadge from '../../components/common/StatusBadge'
 import StatCard from '../../components/common/StatCard'
+import ActionsMenu from '../../components/common/ActionsMenu'
 import { formatMoney } from '../../context/LanguageContext'
 
 export default function Loans() {
@@ -69,22 +70,24 @@ export default function Loans() {
 
   const accountUrl = (a) => `/loans/accounts/${a.customer || 'void'}`
 
+  const customerActions = (a) => [
+    ...(a.customer ? [{ label: 'Edit Customer', icon: 'bi-person-gear', onClick: () => openEdit(a) }] : []),
+  ]
+
   const actionsMenu = (a) => (
-    <Dropdown align="end" popperConfig={{ strategy: 'fixed' }}>
-      <Dropdown.Toggle variant="light" size="sm" className="py-0 px-1 border no-caret btn-icon-action" title="Actions">
-        <i className="bi bi-three-dots" />
-      </Dropdown.Toggle>
-      <Dropdown.Menu className="shadow-sm">
-        <Dropdown.Item onClick={() => navigate(accountUrl(a))}><i className="bi bi-cash-coin me-2" />View Loan Details</Dropdown.Item>
-        <Dropdown.Item onClick={() => navigate(`${accountUrl(a)}?tab=products`)}><i className="bi bi-box-seam me-2" />View All Products</Dropdown.Item>
-        <Dropdown.Item onClick={() => navigate(`${accountUrl(a)}?tab=paid`)}><i className="bi bi-check-circle me-2" />View Paid Products</Dropdown.Item>
-        <Dropdown.Item onClick={() => navigate(`${accountUrl(a)}?tab=unpaid`)}><i className="bi bi-exclamation-circle me-2" />View Unpaid Products</Dropdown.Item>
-        <Dropdown.Item onClick={() => navigate(`${accountUrl(a)}?tab=payments`)}><i className="bi bi-clock-history me-2" />Payment History</Dropdown.Item>
-        <Dropdown.Divider />
-        {a.customer && <Dropdown.Item onClick={() => openEdit(a)}><i className="bi bi-person-gear me-2" />Edit Customer</Dropdown.Item>}
-        <Dropdown.Item onClick={() => navigate(`${accountUrl(a)}?print=1`)}><i className="bi bi-printer me-2" />Print Loan Invoice</Dropdown.Item>
-      </Dropdown.Menu>
-    </Dropdown>
+    <ActionsMenu
+      items={[
+        { label: 'View Loan Details', icon: 'bi-cash-coin', onClick: () => navigate(accountUrl(a)) },
+        { label: 'View All Products', icon: 'bi-box-seam', onClick: () => navigate(`${accountUrl(a)}?tab=products`) },
+        { label: 'View Paid Products', icon: 'bi-check-circle', onClick: () => navigate(`${accountUrl(a)}?tab=paid`) },
+        { label: 'View Unpaid Products', icon: 'bi-exclamation-circle', onClick: () => navigate(`${accountUrl(a)}?tab=unpaid`) },
+        { label: 'Payment History', icon: 'bi-clock-history', onClick: () => navigate(`${accountUrl(a)}?tab=payments`) },
+        { divider: true },
+        ...customerActions(a),
+        { label: 'Print Loan Invoice', icon: 'bi-printer', onClick: () => navigate(`${accountUrl(a)}?print=1`) },
+      ]}
+      title="Loan actions"
+    />
   )
 
   return (
