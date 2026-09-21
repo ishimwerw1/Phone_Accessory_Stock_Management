@@ -5,9 +5,13 @@ import api, { getError } from '../../api/client'
 import DataTable from '../../components/common/DataTable'
 import StatusBadge from '../../components/common/StatusBadge'
 import { formatMoney } from '../../context/LanguageContext'
+import { todayStr } from '../../utils/date'
+import { useAuth } from '../../context/AuthContext'
 
 export default function Orders() {
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const canCustomizeDate = user?.role === 'SUPER_ADMIN' || user?.role === 'MANAGER'
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
@@ -19,13 +23,14 @@ export default function Orders() {
   const [payMethod, setPayMethod] = useState('CASH')
   const [amountPaid, setAmountPaid] = useState('')
   const [reference, setReference] = useState('')
+  const [fulfillDate, setFulfillDate] = useState(todayStr())
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   const [showCreate, setShowCreate] = useState(false)
   const [products, setProducts] = useState([])
   const [itemSearchOpen, setItemSearchOpen] = useState({})
-  const [newOrder, setNewOrder] = useState({ customerName: '', customerPhone: '', notes: '', expectedDeliveryDate: '', items: [{ product: '', name: '', search: '', quantity: '1', price: '' }], discount: '0' })
+  const [newOrder, setNewOrder] = useState({ customerName: '', customerPhone: '', notes: '', expectedDeliveryDate: '', transactionDate: todayStr(), items: [{ product: '', name: '', search: '', quantity: '1', price: '' }], discount: '0' })
 
   const [selectedMap, setSelectedMap] = useState({})
   const [showAddProduct, setShowAddProduct] = useState(false)
@@ -38,6 +43,7 @@ export default function Orders() {
   const [bulkMethod, setBulkMethod] = useState('CASH')
   const [bulkAmount, setBulkAmount] = useState('')
   const [bulkReference, setBulkReference] = useState('')
+  const [bulkDate, setBulkDate] = useState(todayStr())
   const [notice, setNotice] = useState('')
 
   const load = useCallback(async () => {
@@ -67,6 +73,7 @@ export default function Orders() {
     setPayMethod('CASH')
     setAmountPaid('')
     setReference('')
+    setFulfillDate(todayStr())
     setError('')
     setFulfilling(order)
   }
@@ -74,7 +81,7 @@ export default function Orders() {
   const openCreate = () => {
     setError('')
     setItemSearchOpen({})
-    setNewOrder({ customerName: '', customerPhone: '', notes: '', expectedDeliveryDate: '', items: [{ product: '', name: '', search: '', quantity: '1', price: '' }], discount: '0' })
+    setNewOrder({ customerName: '', customerPhone: '', notes: '', expectedDeliveryDate: '', transactionDate: todayStr(), items: [{ product: '', name: '', search: '', quantity: '1', price: '' }], discount: '0' })
     api.get('/products', { params: { limit: 200, status: 'ACTIVE' } }).then((r) => setProducts(r.data.data.products)).catch(() => {})
     setShowCreate(true)
   }
@@ -180,6 +187,7 @@ export default function Orders() {
         notes: newOrder.notes.trim() || undefined,
         expectedDeliveryDate: newOrder.expectedDeliveryDate || undefined,
         discount: Number(newOrder.discount || 0),
+        transactionDate: canCustomizeDate ? newOrder.transactionDate || undefined : undefined,
         items: clean.map((i) => i.product
           ? { product: i.product, quantity: Number(i.quantity), price: Number(i.price) }
           : { name: i.name, quantity: Number(i.quantity), price: Number(i.price) }),
@@ -203,6 +211,7 @@ export default function Orders() {
         paymentMethod: payMethod,
         amountPaid: amountPaid === '' ? undefined : Number(amountPaid),
         paymentReference: reference || undefined,
+        transactionDate: canCustomizeDate ? fulfillDate || undefined : undefined,
         items: lines.map((l) => ({ product: l.product || undefined, price: Number(l.price), quantity: Number(l.quantity) })),
       }
       const { data } = await api.post(`/orders/${fulfilling._id}/fulfill`, payload)
@@ -266,6 +275,7 @@ export default function Orders() {
     setBulkMethod('CASH')
     setBulkAmount('')
     setBulkReference('')
+    setBulkDate(todayStr())
     setError('')
     setNotice('')
     setShowBulk(true)
@@ -282,6 +292,7 @@ export default function Orders() {
         paymentMethod: bulkMethod,
         amountPaid: bulkAmount === '' ? undefined : Number(bulkAmount),
         paymentReference: bulkReference || undefined,
+        transactionDate: canCustomizeDate ? bulkDate || undefined : undefined,
       })
       const sales = data?.data?.sales || []
       setShowBulk(false)
@@ -377,6 +388,17 @@ export default function Orders() {
             <Col sm={4}><Form.Control size="sm" placeholder="Customer phone" value={newOrder.customerPhone} onChange={(e) => setNewOrder({ ...newOrder, customerPhone: e.target.value })} /></Col>
             <Col sm={4}><Form.Control size="sm" type="date" value={newOrder.expectedDeliveryDate} onChange={(e) => setNewOrder({ ...newOrder, expectedDeliveryDate: e.target.value })} /></Col>
           </Row>
+
+          {canCustomizeDate && (
+            <Row className="g-2 mb-3">
+              <Col sm={4}>
+                <Form.Group>
+                  <Form.Label className="small fw-semibold">Transaction Date</Form.Label>
+                  <Form.Control size="sm" type="date" max={todayStr()} value={newOrder.transactionDate} onChange={(e) => setNewOrder({ ...newOrder, transactionDate: e.target.value })} />
+                </Form.Group>
+              </Col>
+            </Row>
+          )}
 
           <div className="d-flex justify-content-between align-items-center mb-2">
             <strong className="small">Items</strong>
@@ -509,6 +531,12 @@ export default function Orders() {
               </Col>
             )}
           </Row>
+          {canCustomizeDate && (
+            <Form.Group className="mb-2">
+              <Form.Label className="small fw-semibold">Transaction Date (sale date)</Form.Label>
+              <Form.Control size="sm" type="date" max={todayStr()} value={fulfillDate} onChange={(e) => setFulfillDate(e.target.value)} />
+            </Form.Group>
+          )}
         </Modal.Body>
         <Modal.Footer>
           <Button variant="light" onClick={() => setFulfilling(null)} disabled={saving}>Cancel</Button>
@@ -570,6 +598,12 @@ export default function Orders() {
               </Col>
             )}
           </Row>
+          {canCustomizeDate && (
+            <Form.Group className="mb-2">
+              <Form.Label className="small fw-semibold">Transaction Date (sale date)</Form.Label>
+              <Form.Control size="sm" type="date" max={todayStr()} value={bulkDate} onChange={(e) => setBulkDate(e.target.value)} />
+            </Form.Group>
+          )}
           <p className="small text-muted mb-0">
             Payment is applied to the orders in list order — earlier orders are settled first. Leave amount blank to treat the whole batch as fully paid.
           </p>

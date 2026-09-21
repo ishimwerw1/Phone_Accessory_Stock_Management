@@ -4,6 +4,7 @@ const { nextNumber } = require('../utils/helpers');
 const { notify } = require('./notificationService');
 const { audit } = require('./auditService');
 const { ROLES } = require('../utils/constants');
+const { resolveTransactionDate } = require('../utils/date');
 const { buildLoanItems } = require('./loanItemService');
 
 const withTransaction = async (fn) => {
@@ -28,11 +29,12 @@ const withTransaction = async (fn) => {
 const opt = (session) => (session ? { session } : {});
 
 const createSale = async (payload, user) => {
-  const { items, discount = 0, paymentMethod = 'CASH', amountPaid, dueDate, reference, notes, customer: customerPayload } = payload;
+  const { items, discount = 0, paymentMethod = 'CASH', amountPaid, dueDate, reference, notes, customer: customerPayload, transactionDate } = payload;
   if (!items || !items.length) throw Object.assign(new Error('Sale must contain at least one product'), { status: 400 });
   if (!['CASH', 'MOMO', 'BANK', 'LOAN'].includes(paymentMethod)) {
     throw Object.assign(new Error('Invalid payment method'), { status: 400 });
   }
+  const txnDate = resolveTransactionDate(transactionDate, user);
 
   return withTransaction(async (session) => {
     const saleNumber = await nextNumber('SALE', opt(session));
@@ -115,10 +117,11 @@ const createSale = async (payload, user) => {
       outstanding,
       reference,
       notes,
+      createdAt: txnDate || undefined,
     }], opt(session));
 
     for (const tx of stockTxns) {
-      await StockTransaction.create([{ ...tx, sale: sale._id }], opt(session));
+      await StockTransaction.create([{ ...tx, sale: sale._id, date: txnDate || undefined }], opt(session));
     }
 
     let payment = null;
@@ -132,6 +135,7 @@ const createSale = async (payload, user) => {
         reference: reference || '',
         status: 'PAID',
         receivedBy: user._id,
+        date: txnDate || undefined,
       }], opt(session));
     }
 
@@ -147,10 +151,12 @@ const createSale = async (payload, user) => {
         totalAmount: total,
         amountPaid: paid,
         outstanding,
-        loanItems: buildLoanItems(saleItems, { upfrontPaid: paid, itemDate: new Date(), discount }),
+        loanItems: buildLoanItems(saleItems, { upfrontPaid: paid, itemDate: txnDate || new Date(), discount }),
         dueDate: dueDate || new Date(Date.now() + 30 * 24 * 3600 * 1000),
         status: outstanding <= 0 ? 'PAID' : 'ACTIVE',
         createdBy: user._id,
+        date: txnDate || undefined,
+        createdAt: txnDate || undefined,
       }], opt(session));
       const [sp] = await Payment.create([{
         paymentNumber: loanPaymentNumber,
@@ -161,6 +167,7 @@ const createSale = async (payload, user) => {
         amount: outstanding,
         status: 'UNPAID',
         receivedBy: user._id,
+        date: txnDate || undefined,
       }], opt(session));
       payment = payment || sp;
       await notify('NEW_LOAN', `Loan ${loanNumber} created for ${customer.name} (${customer.phone}) — outstanding ${outstanding} RWF`, `Inguzanyo ${loanNumber} ya ${customer.name} — hasigaye ${outstanding} RWF`, { sale: sale._id, loan: loan._id });
@@ -176,11 +183,12 @@ const createSale = async (payload, user) => {
 };
 
 const createOnDemandSale = async (payload, user) => {
-  const { items, supplier: globalSupplierId, discount = 0, paymentMethod = 'CASH', amountPaid, dueDate, reference, notes, customer: customerPayload } = payload;
+  const { items, supplier: globalSupplierId, discount = 0, paymentMethod = 'CASH', amountPaid, dueDate, reference, notes, customer: customerPayload, transactionDate } = payload;
   if (!items || !items.length) throw Object.assign(new Error('Sale must contain at least one product'), { status: 400 });
   if (!['CASH', 'MOMO', 'BANK', 'LOAN'].includes(paymentMethod)) {
     throw Object.assign(new Error('Invalid payment method'), { status: 400 });
   }
+  const txnDate = resolveTransactionDate(transactionDate, user);
   const { Supplier } = require('../models');
 
   const supplierIds = new Set();
@@ -282,6 +290,7 @@ const createOnDemandSale = async (payload, user) => {
       reference,
       source: 'ON_DEMAND',
       notes: notes || `On-demand purchase — ${Object.keys(groupedBySupplier).length} supplier(s)`,
+      createdAt: txnDate || undefined,
     }], opt(session));
 
     const purchases = [];
@@ -305,6 +314,7 @@ const createOnDemandSale = async (payload, user) => {
         sale: sale._id,
         notes: notes || `On-demand sourcing for sale ${saleNumber} — ${sup.name}`,
         createdBy: user._id,
+        createdAt: txnDate || undefined,
       }], opt(session));
       purchases.push(purchase);
       await audit({ user }, 'PURCHASE_CREATED', 'Purchase', purchase._id, {
@@ -323,6 +333,7 @@ const createOnDemandSale = async (payload, user) => {
         reference: reference || '',
         status: 'PAID',
         receivedBy: user._id,
+        date: txnDate || undefined,
       }], opt(session));
     }
 
@@ -338,10 +349,12 @@ const createOnDemandSale = async (payload, user) => {
         totalAmount: total,
         amountPaid: paid,
         outstanding,
-        loanItems: buildLoanItems(saleItems, { upfrontPaid: paid, itemDate: new Date(), discount }),
+        loanItems: buildLoanItems(saleItems, { upfrontPaid: paid, itemDate: txnDate || new Date(), discount }),
         dueDate: dueDate || new Date(Date.now() + 30 * 24 * 3600 * 1000),
         status: outstanding <= 0 ? 'PAID' : 'ACTIVE',
         createdBy: user._id,
+        date: txnDate || undefined,
+        createdAt: txnDate || undefined,
       }], opt(session));
       const [sp] = await Payment.create([{
         paymentNumber: loanPaymentNumber,
@@ -352,6 +365,7 @@ const createOnDemandSale = async (payload, user) => {
         amount: outstanding,
         status: 'UNPAID',
         receivedBy: user._id,
+        date: txnDate || undefined,
       }], opt(session));
       payment = payment || sp;
       await notify('NEW_LOAN', `Loan ${loanNumber} created for ${customer.name} (${customer.phone}) — outstanding ${outstanding} RWF`, `Inguzanyo ${loanNumber} ya ${customer.name} — hasigaye ${outstanding} RWF`, { sale: sale._id, loan: loan._id });

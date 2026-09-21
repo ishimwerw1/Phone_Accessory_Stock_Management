@@ -4,10 +4,14 @@ import { useNavigate } from 'react-router-dom'
 import api, { getError } from '../../api/client'
 import { formatMoney } from '../../context/LanguageContext'
 import { extractRates } from '../../utils/currency'
+import { todayStr } from '../../utils/date'
+import { useAuth } from '../../context/AuthContext'
 import ExchangeRateCard from '../../components/common/ExchangeRateCard'
 
 export default function OnDemandSale() {
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const canCustomizeDate = user?.role === 'SUPER_ADMIN' || user?.role === 'MANAGER'
   const [products, setProducts] = useState([])
   const [productSearch, setProductSearch] = useState('')
   const [suppliers, setSuppliers] = useState([])
@@ -25,6 +29,7 @@ export default function OnDemandSale() {
   const [reference, setReference] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [notes, setNotes] = useState('')
+  const [transactionDate, setTransactionDate] = useState(todayStr())
   const [error, setError] = useState('')
   const [confirming, setConfirming] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -219,6 +224,7 @@ export default function OnDemandSale() {
         reference: reference || undefined,
         dueDate: dueDate || undefined,
         notes: notes || undefined,
+        transactionDate: canCustomizeDate ? transactionDate || undefined : undefined,
       }
       const { data } = await api.post('/sales/on-demand', payload)
       setCompleted(data.data)
@@ -236,6 +242,7 @@ export default function OnDemandSale() {
     setCompleted(null)
     setCart([]); setDiscount(0); setPaymentMethod('CASH'); setAmountPaidInput('')
     setReference(''); setDueDate(''); setNotes(''); setCustomer(null)
+    setTransactionDate(todayStr())
     setNewCustomer({ name: '', phone: '' }); setCustomerQuery(''); setError('')
   }
 
@@ -538,6 +545,13 @@ export default function OnDemandSale() {
                     Credit sale: a loan record will be created for <strong>{formatMoney(balance)}</strong>.
                   </Alert>
                 </>
+              )}
+
+              {canCustomizeDate && (
+                <Form.Group className="mb-2">
+                  <Form.Label className="small fw-semibold">Transaction Date</Form.Label>
+                  <Form.Control size="sm" type="date" max={todayStr()} value={transactionDate} onChange={(e) => setTransactionDate(e.target.value)} />
+                </Form.Group>
               )}
 
               <Form.Group className="mb-3">

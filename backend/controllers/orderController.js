@@ -2,6 +2,7 @@ const { Order, Product, Sale, Customer, StockTransaction, Payment, Loan } = requ
 const { success, error, asyncHandler } = require('../utils/response');
 const { audit } = require('../services/auditService');
 const { nextNumber } = require('../utils/helpers');
+const { resolveTransactionDate } = require('../utils/date');
 
 exports.getAll = asyncHandler(async (req, res) => {
   const { search, status, user, from, to, page = 1, limit = 20 } = req.query;
@@ -48,7 +49,7 @@ exports.getOne = asyncHandler(async (req, res) => {
 });
 
 exports.create = asyncHandler(async (req, res) => {
-  const { customer: customerId, customerName, customerPhone, items, discount, notes, expectedDeliveryDate } = req.body;
+  const { customer: customerId, customerName, customerPhone, items, discount, notes, expectedDeliveryDate, transactionDate } = req.body;
 
   if (!items || !items.length) return error(res, 'At least one item is required');
 
@@ -97,6 +98,7 @@ exports.create = asyncHandler(async (req, res) => {
   }
 
   const orderNumber = await nextNumber('ORD');
+  const txnDate = resolveTransactionDate(transactionDate, req.user);
   const order = await Order.create({
     orderNumber,
     customer: customer?._id,
@@ -110,6 +112,7 @@ exports.create = asyncHandler(async (req, res) => {
     expectedDeliveryDate: expectedDeliveryDate || undefined,
     status: 'PENDING',
     createdBy: req.user._id,
+    createdAt: txnDate || undefined,
   });
 
   await order.populate('customer', 'name phone');
@@ -120,7 +123,7 @@ exports.create = asyncHandler(async (req, res) => {
 
 const httpError = (message, status) => Object.assign(new Error(message), { status });
 
-async function fulfillOne(order, user, { method = 'CASH', paidAmount, reference }, overrides = {}) {
+async function fulfillOne(order, user, { method = 'CASH', paidAmount, reference }, overrides = {}, txnDate = null) {
   // Orders may be created with only a name/phone (no linked customer).
   // Loans require a real customer, so resolve/recreate one up front.
   if (!order.customer) {
@@ -191,6 +194,7 @@ async function fulfillOne(order, user, { method = 'CASH', paidAmount, reference 
     reference,
     source: 'ORDER',
     status: 'COMPLETED',
+    createdAt: txnDate || undefined,
   });
 
   // Update stock for product-linked items
@@ -213,6 +217,7 @@ async function fulfillOne(order, user, { method = 'CASH', paidAmount, reference 
       reference: order.orderNumber,
       sale: sale._id,
       performedBy: user._id,
+      date: txnDate || undefined,
     });
   }
 
@@ -228,6 +233,7 @@ async function fulfillOne(order, user, { method = 'CASH', paidAmount, reference 
       reference,
       status: 'PAID',
       receivedBy: user._id,
+      date: txnDate || undefined,
     });
   }
 
@@ -245,6 +251,8 @@ async function fulfillOne(order, user, { method = 'CASH', paidAmount, reference 
       outstanding,
       status: 'ACTIVE',
       createdBy: user._id,
+      date: txnDate || undefined,
+      createdAt: txnDate || undefined,
     });
   }
 
@@ -276,7 +284,7 @@ exports.fulfill = asyncHandler(async (req, res) => {
       method: req.body.paymentMethod || 'CASH',
       paidAmount: req.body.amountPaid,
       reference: req.body.paymentReference,
-    }, overrides);
+    }, overrides, resolveTransactionDate(req.body.transactionDate, req.user));
     await audit(req, 'ORDER_FULFILLED', 'Order', order._id, { orderNumber: order.orderNumber, saleNumber: sale.saleNumber, amountPaid: sale.amountPaid, outstanding: sale.outstanding });
     success(res, 'Order fulfilled', { sale, order });
   } catch (err) {
@@ -285,7 +293,7 @@ exports.fulfill = asyncHandler(async (req, res) => {
 });
 
 exports.bulkFulfill = asyncHandler(async (req, res) => {
-  const { ids, paymentMethod, amountPaid, paymentReference } = req.body;
+  const { ids, paymentMethod, amountPaid, paymentReference, transactionDate } = req.body;
   if (!Array.isArray(ids) || ids.length === 0) return error(res, 'Select at least one order to process');
   if (ids.length > 50) return error(res, 'Too many orders in one batch (max 50)');
 
@@ -315,6 +323,7 @@ exports.bulkFulfill = asyncHandler(async (req, res) => {
   const method = paymentMethod || 'CASH';
   const totalDue = eligible.reduce((s, o) => s + o.total, 0);
   let remaining = amountPaid !== undefined ? Math.min(Number(amountPaid) || 0, totalDue) : totalDue;
+  const txnDate = resolveTransactionDate(req.body.transactionDate, req.user);
 
   const results = [];
   const failures = [];
@@ -322,7 +331,7 @@ exports.bulkFulfill = asyncHandler(async (req, res) => {
     const ticket = Math.min(remaining, o.total);
     remaining -= ticket;
     try {
-      const { sale } = await fulfillOne(o, req.user, { method, paidAmount: ticket, reference: paymentReference });
+      const { sale } = await fulfillOne(o, req.user, { method, paidAmount: ticket, reference: paymentReference }, {}, txnDate);
       results.push({ orderId: o._id, orderNumber: o.orderNumber, saleId: sale._id, saleNumber: sale.saleNumber, total: sale.total, paid: sale.amountPaid, outstanding: sale.outstanding });
     } catch (err) {
       failures.push({ orderNumber: o.orderNumber, message: err.message });
