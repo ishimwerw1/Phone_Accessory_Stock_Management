@@ -3,6 +3,35 @@ const { Purchase, Product, StockTransaction, SupplierPayment, Supplier } = requi
 const { success, error, asyncHandler } = require('../utils/response');
 const { audit } = require('../services/auditService');
 const { nextNumber } = require('../utils/helpers');
+const { normalizeDateOnly, todayUtc } = require('../utils/date');
+
+const buildPurchaseItems = async (items) => {
+  const purchaseItems = [];
+  let totalAmount = 0;
+  for (const item of items) {
+    if (!item.product || !item.quantity || !item.costPrice) {
+      throw Object.assign(new Error('Each item must have product, quantity, and costPrice'), { status: 400 });
+    }
+    if (Number(item.quantity) <= 0) throw Object.assign(new Error('Quantity must be greater than 0'), { status: 400 });
+    if (Number(item.costPrice) < 0) throw Object.assign(new Error('Cost price cannot be negative'), { status: 400 });
+
+    const product = await Product.findById(item.product);
+    if (!product) throw Object.assign(new Error(`Product not found: ${item.product}`), { status: 404 });
+
+    const subtotal = Number(item.quantity) * Number(item.costPrice);
+    totalAmount += subtotal;
+
+    purchaseItems.push({
+      product: product._id,
+      productName: product.name,
+      sku: product.sku,
+      quantity: Number(item.quantity),
+      costPrice: Number(item.costPrice),
+      subtotal,
+    });
+  }
+  return { purchaseItems, totalAmount };
+};
 
 exports.getAll = asyncHandler(async (req, res) => {
   const { search, supplier, paymentStatus, status, type, from, to, page = 1, limit = 20 } = req.query;
@@ -44,7 +73,7 @@ exports.getOne = asyncHandler(async (req, res) => {
 });
 
 exports.create = asyncHandler(async (req, res) => {
-  const { supplier: supplierId, items, paymentMethod, amountPaid, dueDate, notes } = req.body;
+  const { supplier: supplierId, items, paymentMethod, amountPaid, dueDate, notes, purchaseDate } = req.body;
 
   if (!supplierId || !items || !items.length) {
     return error(res, 'Supplier and at least one item are required');
@@ -53,31 +82,7 @@ exports.create = asyncHandler(async (req, res) => {
   const supplier = await Supplier.findById(supplierId);
   if (!supplier) return error(res, 'Supplier not found', 404);
 
-  let totalAmount = 0;
-  const purchaseItems = [];
-
-  for (const item of items) {
-    if (!item.product || !item.quantity || !item.costPrice) {
-      return error(res, 'Each item must have product, quantity, and costPrice');
-    }
-    if (Number(item.quantity) <= 0) return error(res, 'Quantity must be greater than 0');
-    if (Number(item.costPrice) < 0) return error(res, 'Cost price cannot be negative');
-
-    const product = await Product.findById(item.product);
-    if (!product) return error(res, `Product not found: ${item.product}`);
-
-    const subtotal = Number(item.quantity) * Number(item.costPrice);
-    totalAmount += subtotal;
-
-    purchaseItems.push({
-      product: product._id,
-      productName: product.name,
-      sku: product.sku,
-      quantity: Number(item.quantity),
-      costPrice: Number(item.costPrice),
-      subtotal,
-    });
-  }
+  const { purchaseItems, totalAmount } = await buildPurchaseItems(items);
 
   const paidAmount = Number(amountPaid) || 0;
   if (paidAmount > totalAmount) return error(res, 'Amount paid cannot exceed total amount');
@@ -100,6 +105,7 @@ exports.create = asyncHandler(async (req, res) => {
     notes,
     status: 'RECEIVED',
     createdBy: req.user._id,
+    createdAt: normalizeDateOnly(purchaseDate) || todayUtc(),
   });
 
   // Update stock for each product
@@ -134,16 +140,85 @@ exports.update = asyncHandler(async (req, res) => {
   const purchase = await Purchase.findById(req.params.id);
   if (!purchase) return error(res, 'Purchase not found', 404);
   if (purchase.status === 'CANCELLED') return error(res, 'Cannot update a cancelled purchase');
+  if (purchase.type === 'ON_DEMAND' || purchase.sale) {
+    return error(res, 'On-demand purchases cannot be edited');
+  }
 
-  const { dueDate, notes, status } = req.body;
+  const { items, paymentMethod, amountPaid, dueDate, notes, purchaseDate, status } = req.body;
+
+  let newItems = null;
+  let newTotal = purchase.totalAmount;
+  if (items) {
+    if (!Array.isArray(items) || !items.length) return error(res, 'At least one item is required');
+    const built = await buildPurchaseItems(items);
+    newItems = built.purchaseItems;
+    newTotal = built.totalAmount;
+  }
+
+  const paidAmount = amountPaid !== undefined ? Number(amountPaid) || 0 : purchase.amountPaid;
+  if (paidAmount > newTotal) return error(res, 'Amount paid cannot exceed total amount');
+
+  // Reverse the old purchase stock effect and apply the new one. We compare the
+  // per-product quantities BEFORE and AFTER so:
+  //   - unchanged quantities -> no stock movement (no duplicates)
+  //   - date-only edits     -> no stock movement
+  //   - qty/product changes -> one net adjustment per product
+  if (purchase.status === 'RECEIVED' && newItems) {
+    const oldMap = {};
+    for (const it of purchase.items) oldMap[String(it.product)] = (oldMap[String(it.product)] || 0) + it.quantity;
+    const newMap = {};
+    for (const it of newItems) newMap[String(it.product)] = (newMap[String(it.product)] || 0) + it.quantity;
+
+    const allIds = new Set([...Object.keys(oldMap), ...Object.keys(newMap)]);
+    for (const pid of allIds) {
+      const delta = (newMap[pid] || 0) - (oldMap[pid] || 0);
+      if (delta === 0) continue;
+
+      const product = await Product.findById(pid);
+      if (!product) continue;
+      const prevQty = product.quantity;
+      product.quantity = Math.max(0, product.quantity + delta);
+      await product.save();
+
+      await StockTransaction.create({
+        product: product._id,
+        productName: product.name,
+        sku: product.sku,
+        type: delta > 0 ? 'STOCK_IN' : 'RETURN',
+        quantity: Math.abs(delta),
+        prevQuantity: prevQty,
+        newQuantity: product.quantity,
+        reason: `Purchase ${purchase.purchaseNumber} updated`,
+        reference: purchase.purchaseNumber,
+        performedBy: req.user._id,
+      });
+    }
+  }
+
+  if (newItems) purchase.items = newItems;
+  purchase.totalAmount = newTotal;
+  purchase.amountPaid = paidAmount;
+  purchase.remainingAmount = newTotal - paidAmount;
+  purchase.paymentStatus = purchase.remainingAmount <= 0 ? 'PAID' : paidAmount > 0 ? 'PARTIALLY_PAID' : 'UNPAID';
+
+  if (paymentMethod) purchase.paymentMethod = paymentMethod;
   if (dueDate) purchase.dueDate = dueDate;
   if (notes !== undefined) purchase.notes = notes;
+  if (purchaseDate) {
+    const selectedDate = normalizeDateOnly(purchaseDate);
+    if (selectedDate) {
+      purchase.createdAt = selectedDate;
+      purchase.markModified('createdAt');
+    }
+  }
   if (status && status !== 'CANCELLED') purchase.status = status;
   purchase.updatedBy = req.user._id;
 
   await purchase.save();
-  await audit(req, 'PURCHASE_UPDATED', 'Purchase', purchase._id, { purchaseNumber: purchase.purchaseNumber });
-  success(res, 'Purchase updated', purchase);
+  await purchase.populate('supplier', 'name phone');
+  await purchase.populate('createdBy', 'name');
+  await audit(req, 'PURCHASE_UPDATED', 'Purchase', purchase._id, { purchaseNumber: purchase.purchaseNumber, totalAmount: purchase.totalAmount, paymentStatus: purchase.paymentStatus });
+  success(res, 'Purchase updated successfully', purchase);
 });
 
 exports.remove = asyncHandler(async (req, res) => {

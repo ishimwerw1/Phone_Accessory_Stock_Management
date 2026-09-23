@@ -7,7 +7,18 @@ import ConfirmDialog from '../../components/common/ConfirmDialog'
 import { useAuth } from '../../context/AuthContext'
 import { formatMoney } from '../../context/LanguageContext'
 import { extractRates } from '../../utils/currency'
+import { todayStr, toDateInput, formatDisplayDate } from '../../utils/date'
 import ExchangeRateCard from '../../components/common/ExchangeRateCard'
+
+const EMPTY_FORM = () => ({
+  supplier: '',
+  items: [{ product: '', quantity: '', costPrice: '' }],
+  paymentMethod: 'CASH',
+  amountPaid: '',
+  purchaseDate: todayStr(),
+  dueDate: '',
+  notes: '',
+})
 
 export default function Purchases() {
   const [purchases, setPurchases] = useState([])
@@ -22,10 +33,12 @@ export default function Purchases() {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [showForm, setShowForm] = useState(false)
+  const [editing, setEditing] = useState(null)
   const [showDetail, setShowDetail] = useState(null)
   const [detailData, setDetailData] = useState(null)
-  const [form, setForm] = useState({ supplier: '', items: [{ product: '', quantity: '', costPrice: '' }], paymentMethod: 'CASH', amountPaid: '', dueDate: '', notes: '' })
+  const [form, setForm] = useState(EMPTY_FORM)
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
   const [saving, setSaving] = useState(false)
   const [confirmDel, setConfirmDel] = useState(null)
   const [deleting, setDeleting] = useState(false)
@@ -78,8 +91,31 @@ export default function Purchases() {
 
   const openForm = () => {
     setError('')
-    setForm({ supplier: '', items: [{ product: '', quantity: '', costPrice: '' }], paymentMethod: 'CASH', amountPaid: '', dueDate: '', notes: '' })
+    setSuccess('')
+    setEditing(null)
+    setForm(EMPTY_FORM())
     loadFormDeps()
+    setShowForm(true)
+  }
+
+  const openEdit = async (p) => {
+    setError('')
+    setSuccess('')
+    setEditing(p)
+    await loadFormDeps()
+    setForm({
+      supplier: p.supplier?._id || '',
+      items: (p.items || []).map((i) => ({
+        product: i.product?._id || i.product || '',
+        quantity: i.quantity,
+        costPrice: i.costPrice,
+      })),
+      paymentMethod: p.paymentMethod || 'CASH',
+      amountPaid: p.amountPaid ?? '',
+      purchaseDate: toDateInput(p.purchaseDate || p.createdAt) || todayStr(),
+      dueDate: toDateInput(p.dueDate),
+      notes: p.notes || '',
+    })
     setShowForm(true)
   }
 
@@ -157,16 +193,24 @@ export default function Purchases() {
     ev.preventDefault()
     setSaving(true)
     setError('')
+    setSuccess('')
     try {
       const payload = {
         supplier: form.supplier,
         items: form.items.map((i) => ({ product: i.product, quantity: Number(i.quantity), costPrice: Number(i.costPrice) })),
+        purchaseDate: form.purchaseDate || todayStr(),
         paymentMethod: form.paymentMethod,
         amountPaid: form.amountPaid ? Number(form.amountPaid) : 0,
         dueDate: form.dueDate || undefined,
         notes: form.notes || undefined,
       }
-      await api.post('/purchases', payload)
+      if (editing) {
+        const { data } = await api.put(`/purchases/${editing._id}`, payload)
+        setSuccess((data.data?.purchaseNumber || editing.purchaseNumber) + ' updated successfully.')
+      } else {
+        await api.post('/purchases', payload)
+        setSuccess('Purchase created successfully.')
+      }
       setShowForm(false)
       load()
     } catch (err) {
@@ -212,6 +256,7 @@ export default function Purchases() {
 
       <Card body>
         {error && <Alert variant="danger" dismissible onClose={() => setError('')} className="py-2 small mb-3">{error}</Alert>}
+        {success && <Alert variant="success" dismissible onClose={() => setSuccess('')} className="py-2 small mb-3"><i className="bi bi-check-circle me-1" />{success}</Alert>}
 
         <div className="d-flex flex-wrap gap-2 mb-3">
           <Form.Select size="sm" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }} style={{ maxWidth: 150 }}>
@@ -242,7 +287,7 @@ export default function Purchases() {
                 {p.purchaseNumber}
               </button>
             )},
-            { key: 'createdAt', label: 'Date', render: (p) => new Date(p.createdAt).toLocaleDateString() },
+            { key: 'createdAt', label: 'Date', render: (p) => formatDisplayDate(p.purchaseDate || p.createdAt) },
             { key: 'type', label: 'Type', render: (p) => (
               <Badge bg="" className={p.type === 'ON_DEMAND' ? 'badge-soft-warning' : 'badge-soft-secondary'}>{p.type === 'ON_DEMAND' ? 'On-demand' : 'Normal'}</Badge>
             ) },
@@ -255,9 +300,12 @@ export default function Purchases() {
             { key: 'status', label: 'Status', render: (p) => <StatusBadge value={p.status} /> },
             { key: 'actions', label: 'Actions', render: (p) => (
               <div className="d-flex gap-1">
-                <Button size="sm" variant="light" className="border" onClick={() => openDetail(p)}><i className="bi bi-eye" /></Button>
+                <Button size="sm" variant="light" className="border" title="View purchase" onClick={() => openDetail(p)}><i className="bi bi-eye" /></Button>
+                {p.status !== 'CANCELLED' && p.type !== 'ON_DEMAND' && hasPermission('purchases.update') && (
+                  <Button size="sm" variant="light" className="border" title="Edit purchase" onClick={() => openEdit(p)}><i className="bi bi-pencil" /></Button>
+                )}
                 {p.status !== 'CANCELLED' && hasPermission('purchases.delete') && (
-                  <Button size="sm" variant="outline-danger" onClick={() => setConfirmDel(p)}><i className="bi bi-trash" /></Button>
+                  <Button size="sm" variant="outline-danger" title="Cancel purchase" onClick={() => setConfirmDel(p)}><i className="bi bi-trash" /></Button>
                 )}
               </div>
             )}
@@ -271,11 +319,11 @@ export default function Purchases() {
         />
       </Card>
 
-      {/* Create Purchase Modal */}
+      {/* Create / Edit Purchase Modal */}
       <Modal show={showForm} onHide={() => !saving && setShowForm(false)} size="lg" centered backdrop="static">
         <Form onSubmit={submit}>
           <Modal.Header closeButton={!saving}>
-            <Modal.Title className="fs-6 fw-bold">New Purchase Order</Modal.Title>
+            <Modal.Title className="fs-6 fw-bold">{editing ? 'Edit Purchase Order' : 'New Purchase Order'}</Modal.Title>
           </Modal.Header>
           <Modal.Body>
             {error && <Alert variant="danger" className="py-2 small">{error}</Alert>}
@@ -283,14 +331,24 @@ export default function Purchases() {
               <Col md={6}>
                 <Form.Group>
                   <Form.Label>Supplier *</Form.Label>
-                  <Form.Select value={form.supplier} onChange={(e) => setForm({ ...form, supplier: e.target.value })} required>
+                  <Form.Select value={form.supplier} onChange={(e) => setForm({ ...form, supplier: e.target.value })} disabled={Boolean(editing)} required>
                     <option value="">Select Supplier</option>
                     {suppliers.map((s) => <option key={s._id} value={s._id}>{s.name} ({s.phone})</option>)}
                   </Form.Select>
                 </Form.Group>
-                <Button size="sm" variant="link" className="p-0 mt-1 text-decoration-none" onClick={() => setShowNewSupplier(true)}>
-                  <i className="bi bi-plus-lg me-1" />Add New Supplier
-                </Button>
+                {editing ? (
+                  <small className="text-muted"><i className="bi bi-lock me-1" />Supplier cannot be changed.</small>
+                ) : (
+                  <Button size="sm" variant="link" className="p-0 mt-1 text-decoration-none" onClick={() => setShowNewSupplier(true)}>
+                    <i className="bi bi-plus-lg me-1" />Add New Supplier
+                  </Button>
+                )}
+              </Col>
+              <Col md={3}>
+                <Form.Group>
+                  <Form.Label>Purchase Date</Form.Label>
+                  <Form.Control type="date" value={form.purchaseDate} onChange={(e) => setForm({ ...form, purchaseDate: e.target.value })} />
+                </Form.Group>
               </Col>
               <Col md={3}>
                 <Form.Group>
@@ -303,7 +361,7 @@ export default function Purchases() {
                   </Form.Select>
                 </Form.Group>
               </Col>
-              <Col md={3}>
+              <Col md={6}>
                 <Form.Group>
                   <Form.Label>Amount Paid (RWF)</Form.Label>
                   <Form.Control type="number" min="0" value={form.amountPaid} onChange={(e) => setForm({ ...form, amountPaid: e.target.value })} placeholder="0" />
@@ -373,7 +431,7 @@ export default function Purchases() {
           </Modal.Body>
           <Modal.Footer>
             <Button variant="light" onClick={() => setShowForm(false)} disabled={saving}>Cancel</Button>
-            <Button type="submit" disabled={saving}>{saving ? 'Creating...' : 'Create Purchase'}</Button>
+            <Button type="submit" disabled={saving}>{saving ? 'Saving...' : editing ? 'Save Changes' : 'Create Purchase'}</Button>
           </Modal.Footer>
         </Form>
       </Modal>
@@ -396,6 +454,7 @@ export default function Purchases() {
                     <strong>{p.supplier?.name}</strong><br />
                     <small>{p.supplier?.phone}</small>
                     <div className="mt-1"><Badge bg="" className={p.type === 'ON_DEMAND' ? 'badge-soft-warning' : 'badge-soft-secondary'}>{p.type === 'ON_DEMAND' ? 'On-demand Sourcing' : 'Normal Stock'}</Badge></div>
+                    <div className="mt-1"><span className="text-muted">Date:</span> <strong>{formatDisplayDate(p.purchaseDate || p.createdAt)}</strong></div>
                   </Col>
                   <Col sm={3}>
                     <div className="text-muted">Payment</div>
