@@ -41,6 +41,18 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 
-connectDB().then(() => {
-  app.listen(PORT, () => console.log(`Backend running on http://localhost:${PORT}`));
-});
+connectDB()
+  .then(async () => {
+    try {
+      const { migratePurchaseData } = require('./services/purchaseService');
+      const result = await migratePurchaseData();
+      if (result.migrated) console.log(`[migrate] Purchases backfilled: ${result.processed} document(s)`);
+    } catch (err) {
+      console.error('[migrate] Purchase migration failed:', err.message);
+    }
+    app.listen(PORT, () => console.log(`Backend running on http://localhost:${PORT}`));
+  })
+  .catch((err) => {
+    console.error('Failed to connect to database:', err.message);
+    process.exit(1);
+  });

@@ -5,9 +5,21 @@ const purchaseItemSchema = new mongoose.Schema(
     product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
     productName: String,
     sku: String,
-    quantity: { type: Number, required: true, min: 1 },
+    quantity: { type: Number, required: true, min: 0 },
+    originalQuantity: { type: Number, default: 0 },
     costPrice: { type: Number, required: true, min: 0 },
     subtotal: { type: Number, required: true },
+    originalSubtotal: { type: Number, default: 0 },
+    amountPaid: { type: Number, default: 0, min: 0 },
+    remaining: { type: Number, default: 0, min: 0 },
+    paymentStatus: { type: String, enum: ['UNPAID', 'PARTIALLY_PAID', 'PAID', 'RETURNED'], default: 'UNPAID' },
+    returned: { type: Boolean, default: false },
+    returnedQty: { type: Number, default: 0, min: 0 },
+    returnedOn: Date,
+    returnReason: String,
+    returnedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    refundAmount: { type: Number, default: 0, min: 0 },
+    date: { type: Date },
   },
   { _id: true }
 );
@@ -24,10 +36,14 @@ const purchaseSchema = new mongoose.Schema(
     supplierPhone: String,
     items: [purchaseItemSchema],
     totalAmount: { type: Number, required: true, default: 0 },
+    purchaseDate: { type: Date },
     paymentMethod: { type: String, enum: ['CASH', 'MOMO', 'BANK', 'CREDIT'], default: 'CASH' },
     paymentStatus: { type: String, enum: PAYMENT_STATUSES, default: 'PAID' },
     amountPaid: { type: Number, default: 0 },
     remainingAmount: { type: Number, default: 0 },
+    refundedAmount: { type: Number, default: 0 },
+    returnedQty: { type: Number, default: 0 },
+    returnedValue: { type: Number, default: 0 },
     dueDate: Date,
     status: { type: String, enum: PURCHASE_STATUSES, default: 'RECEIVED' },
     type: { type: String, enum: PURCHASE_TYPES, default: 'NORMAL' },
@@ -41,10 +57,12 @@ const purchaseSchema = new mongoose.Schema(
 
 purchaseSchema.index({ supplier: 1 });
 purchaseSchema.index({ paymentStatus: 1 });
+purchaseSchema.index({ purchaseDate: 1 });
 purchaseSchema.index({ dueDate: 1 });
 purchaseSchema.index({ createdBy: 1 });
 purchaseSchema.index({ type: 1 });
 purchaseSchema.index({ sale: 1 });
+purchaseSchema.index({ 'items.product': 1 });
 
 module.exports = mongoose.model('Purchase', purchaseSchema);
 module.exports.PURCHASE_STATUSES = PURCHASE_STATUSES;

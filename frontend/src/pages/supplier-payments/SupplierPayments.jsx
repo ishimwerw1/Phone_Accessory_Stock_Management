@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Card, Button, Modal, Form, Row, Col, Alert } from 'react-bootstrap'
+import { Card, Button, Modal, Form, Row, Col, Alert, Badge } from 'react-bootstrap'
 import api, { getError } from '../../api/client'
 import DataTable from '../../components/common/DataTable'
 import StatusBadge from '../../components/common/StatusBadge'
@@ -95,7 +95,12 @@ export default function SupplierPayments() {
               return s ? <span className="small text-primary">{s.saleNumber}<br /><small className="text-muted">{s.customer?.name || '-'} · {formatMoney(s.total)}</small></span> : '-'
             } },
             { key: 'supplier', label: 'Supplier', render: (p) => <span className="small">{p.supplier?.name || p.supplierName || '-'}</span> },
-            { key: 'amount', label: 'Amount', render: (p) => <strong className="text-success">{formatMoney(p.amount)}</strong> },
+            { key: 'amount', label: 'Amount', render: (p) => <strong className={p.type === 'REFUND' ? 'text-warning' : 'text-success'}>{formatMoney(p.amount)}</strong> },
+            { key: 'type', label: 'Type', render: (p) => (
+              p.type === 'REFUND'
+                ? <Badge bg="" className="badge-soft-warning">Refund</Badge>
+                : <Badge bg="" className="badge-soft-success">Payment</Badge>
+            ) },
             { key: 'previousRemaining', label: 'Was Owing', render: (p) => formatMoney(p.previousRemaining) },
             { key: 'newRemaining', label: 'Now Owing', render: (p) => <strong className={p.newRemaining > 0 ? 'text-danger' : 'text-success'}>{formatMoney(p.newRemaining)}</strong> },
             { key: 'paymentMethod', label: 'Method', render: (p) => <StatusBadge value={p.paymentMethod} /> },

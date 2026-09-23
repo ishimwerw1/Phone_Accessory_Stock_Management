@@ -2,6 +2,7 @@ const { SupplierPayment, Purchase } = require('../models');
 const { success, error, asyncHandler } = require('../utils/response');
 const { audit } = require('../services/auditService');
 const { nextNumber } = require('../utils/helpers');
+const { allocateFIFO, payPurchaseItems, recomputePurchase } = require('../services/purchaseService');
 
 exports.getAll = asyncHandler(async (req, res) => {
   const { purchase, supplier, page = 1, limit = 20 } = req.query;
@@ -27,6 +28,32 @@ exports.getAll = asyncHandler(async (req, res) => {
   success(res, 'Supplier payments', { payments, total, pages: Math.ceil(total / Number(limit)) || 1 });
 });
 
+const recordPayment = async ({ purchase, item, amount, paymentMethod, reference, note, user, previousRemaining, newRemaining }) => {
+  const paymentNumber = await nextNumber('SUP');
+  const payment = await SupplierPayment.create({
+    paymentNumber,
+    purchase: purchase._id,
+    purchaseNumber: purchase.purchaseNumber,
+    purchaseItem: item ? item._id : undefined,
+    itemName: item ? item.productName : undefined,
+    product: item ? item.product : undefined,
+    supplier: purchase.supplier,
+    supplierName: purchase.supplierName,
+    amount,
+    previousRemaining,
+    newRemaining,
+    type: 'PAYMENT',
+    paymentMethod: paymentMethod || 'CASH',
+    reference,
+    note,
+    receivedBy: user._id,
+  });
+  await payment.populate('receivedBy', 'name');
+  await payment.populate('supplier', 'name');
+  await payment.populate('purchase', 'purchaseNumber');
+  return payment;
+};
+
 exports.create = asyncHandler(async (req, res) => {
   const { purchaseId, amount, paymentMethod, reference, note } = req.body;
 
@@ -36,40 +63,28 @@ exports.create = asyncHandler(async (req, res) => {
 
   const purchase = await Purchase.findById(purchaseId);
   if (!purchase) return error(res, 'Purchase not found', 404);
-  if (purchase.paymentStatus === 'PAID') return error(res, 'This purchase is already fully paid');
-  if (Number(amount) > purchase.remainingAmount) return error(res, 'Payment exceeds remaining amount');
+  if (purchase.status === 'CANCELLED') return error(res, 'This purchase is cancelled');
+  const allocations = allocateFIFO(purchase.items, Number(amount));
+  const allocatable = allocations.reduce((s, a) => s + Number(a.allocated), 0);
+  if (allocatable <= 0) return error(res, 'This purchase has no outstanding balance');
+  if (Number(amount) > allocatable) return error(res, 'Payment exceeds remaining amount');
 
-  const paymentNumber = await nextNumber('SUP');
-  const previousRemaining = purchase.remainingAmount;
-  const newRemaining = previousRemaining - Number(amount);
-
-  const payment = await SupplierPayment.create({
-    paymentNumber,
-    purchase: purchase._id,
-    purchaseNumber: purchase.purchaseNumber,
-    supplier: purchase.supplier,
-    supplierName: purchase.supplierName,
-    amount: Number(amount),
-    previousRemaining,
-    newRemaining,
-    paymentMethod: paymentMethod || 'CASH',
-    reference,
-    note,
-    receivedBy: req.user._id,
-  });
-
-  // Update purchase
-  purchase.amountPaid += Number(amount);
-  purchase.remainingAmount = newRemaining;
-  purchase.paymentStatus = newRemaining <= 0 ? 'PAID' : 'PARTIALLY_PAID';
+  const previousRemaining = Number(purchase.remainingAmount) || 0;
+  const paid = payPurchaseItems(purchase, Number(amount));
+  const newRemaining = Number(purchase.remainingAmount) || 0;
   await purchase.save();
 
-  await payment.populate('receivedBy', 'name');
-  await payment.populate('supplier', 'name');
-  await payment.populate('purchase', 'purchaseNumber');
-  await audit(req, 'SUPPLIER_PAYMENT', 'SupplierPayment', payment._id, {
-    purchaseNumber: purchase.purchaseNumber, amount: Number(amount), remaining: newRemaining,
-  });
+  const created = [];
+  for (const { item, amount: itemAmount } of paid) {
+    const payment = await recordPayment({
+      purchase, item, amount: itemAmount, paymentMethod, reference, note,
+      user: req.user, previousRemaining: newRemaining + itemAmount, newRemaining,
+    });
+    created.push(payment);
+    await audit(req, 'SUPPLIER_PAYMENT', 'SupplierPayment', payment._id, {
+      purchaseNumber: purchase.purchaseNumber, itemName: item.productName, amount: itemAmount, remaining: newRemaining,
+    });
+  }
 
-  success(res, 'Payment recorded', payment, 201);
+  success(res, 'Payment recorded', { payment: created[0], payments: created, purchase }, 201);
 });

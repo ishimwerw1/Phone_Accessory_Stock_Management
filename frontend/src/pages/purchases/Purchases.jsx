@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Card, Button, Modal, Form, Row, Col, Alert, Badge, InputGroup } from 'react-bootstrap'
+import { Card, Button, Modal, Form, Row, Col, Alert, Badge, InputGroup, Spinner } from 'react-bootstrap'
 import api, { getError } from '../../api/client'
-import DataTable from '../../components/common/DataTable'
 import StatusBadge from '../../components/common/StatusBadge'
 import ConfirmDialog from '../../components/common/ConfirmDialog'
+import ActionsMenu from '../../components/common/ActionsMenu'
 import { useAuth } from '../../context/AuthContext'
 import { formatMoney } from '../../context/LanguageContext'
 import { extractRates } from '../../utils/currency'
@@ -20,27 +20,34 @@ const EMPTY_FORM = () => ({
   notes: '',
 })
 
+const METHODS = [['CASH', 'Cash'], ['MOMO', 'MoMo'], ['BANK', 'Bank']]
+
 export default function Purchases() {
-  const [purchases, setPurchases] = useState([])
+  const [groups, setGroups] = useState([])
   const [suppliers, setSuppliers] = useState([])
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
   const [pages, setPages] = useState(1)
   const [total, setTotal] = useState(0)
+  const [purchaseCount, setPurchaseCount] = useState(0)
+  const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('ALL')
   const [paymentFilter, setPaymentFilter] = useState('ALL')
+  const [supplierFilter, setSupplierFilter] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
   const [showDetail, setShowDetail] = useState(null)
   const [detailData, setDetailData] = useState(null)
+  const [group, setGroup] = useState(null)
+  const [groupData, setGroupData] = useState(null)
   const [form, setForm] = useState(EMPTY_FORM)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [saving, setSaving] = useState(false)
-  const [confirmDel, setConfirmDel] = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(null)
   const [deleting, setDeleting] = useState(false)
   const [typeFilter, setTypeFilter] = useState('ALL')
   const [showNewSupplier, setShowNewSupplier] = useState(false)
@@ -52,25 +59,49 @@ export default function Purchases() {
   const [quickSaving, setQuickSaving] = useState(false)
   const { hasPermission } = useAuth()
 
+  // Item action state
+  const [itemAction, setItemAction] = useState(null) // { item, purchase, type }
+  const [actionForm, setActionForm] = useState({})
+  const [actionError, setActionError] = useState('')
+  const [actionSaving, setActionSaving] = useState(false)
+  const [itemDetail, setItemDetail] = useState(null)
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const params = { page, limit: 20 }
+      if (search) params.search = search
       if (statusFilter !== 'ALL') params.status = statusFilter
       if (paymentFilter !== 'ALL') params.paymentStatus = paymentFilter
+      if (supplierFilter) params.supplier = supplierFilter
       if (typeFilter !== 'ALL') params.type = typeFilter
       if (from) params.from = from
       if (to) params.to = to
       const { data } = await api.get('/purchases', { params })
-      setPurchases(data.data.purchases)
+      setGroups(data.data.groups || [])
       setTotal(data.data.total)
       setPages(data.data.pages)
+      setPurchaseCount(data.data.purchaseCount || 0)
+    } catch (err) {
+      setError(getError(err))
     } finally {
       setLoading(false)
     }
-  }, [page, statusFilter, paymentFilter, typeFilter, from, to])
+  }, [page, search, statusFilter, paymentFilter, supplierFilter, typeFilter, from, to])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    api.get('/suppliers').then((res) => {
+      const d = res.data.data
+      setSuppliers(Array.isArray(d) ? d : [])
+    }).catch(() => {})
+  }, [])
+
+  const refresh = () => {
+    if (groupData) loadGroup(groupData.supplier?._id || groupData.supplier)
+    load()
+  }
 
   const loadFormDeps = async () => {
     try {
@@ -98,7 +129,7 @@ export default function Purchases() {
     setShowForm(true)
   }
 
-  const openEdit = async (p) => {
+  const openEditPurchase = async (p) => {
     setError('')
     setSuccess('')
     setEditing(p)
@@ -123,7 +154,7 @@ export default function Purchases() {
     setForm({ ...form, items: [...form.items, { product: '', quantity: '', costPrice: '' }] })
   }
 
-  const removeItem = (idx) => {
+  const removeFormItem = (idx) => {
     if (form.items.length <= 1) return
     setForm({ ...form, items: form.items.filter((_, i) => i !== idx) })
   }
@@ -220,34 +251,169 @@ export default function Purchases() {
     }
   }
 
-  const openDetail = async (p) => {
+  const loadGroup = async (supplierId) => {
+    if (!supplierId) return
+    try {
+      const { data } = await api.get(`/purchases/suppliers/${supplierId}`)
+      setGroupData(data.data)
+      setGroup(data.data.supplier)
+    } catch (err) {
+      setError(getError(err))
+    }
+  }
+
+  const openGroup = (g) => {
+    setError('')
+    loadGroup(g.supplier)
+  }
+
+  const openPurchaseDetail = async (p) => {
     try {
       const { data } = await api.get(`/purchases/${p._id}`)
       setDetailData(data.data)
       setShowDetail(true)
-    } catch {}
+    } catch (err) {
+      setError(getError(err))
+    }
   }
 
-  const doDelete = async () => {
-    if (!confirmDel) return
+  // ---- per-item actions ----
+  const openItemDialog = (type, purchase, item) => {
+    setActionError('')
+    const baseItem = { item, purchase }
+    setItemAction({ ...baseItem, type })
+    if (type === 'PAY') setActionForm({ amount: String(item.remaining ?? ''), method: 'CASH', reference: '', date: todayStr(), note: '' })
+    if (type === 'EDIT') setActionForm({ quantity: item.quantity, costPrice: item.costPrice, date: toDateInput(item.purchaseDate || item.date) || todayStr() })
+    if (type === 'RETURN') setActionForm({ qty: String(item.quantity ?? ''), reason: '' })
+  }
+  const closeItemDialog = () => {
+    if (actionSaving) return
+    setItemAction(null)
+    setActionForm({})
+  }
+
+  const doItemAction = async () => {
+    const { item, purchase, type } = itemAction
+    if (!item || !purchase) return
+    setActionSaving(true)
+    setActionError('')
+    try {
+      if (type === 'PAY') {
+        const amount = Number(actionForm.amount)
+        if (!amount || amount <= 0) return setActionError('Enter a valid payment amount.')
+        if (amount > (item.remaining ?? 0)) return setActionError(`Amount cannot exceed the remaining balance of ${formatMoney(item.remaining)}.`)
+        await api.post(`/purchases/${purchase._id}/items/${item._id}/pay`, {
+          amount,
+          method: actionForm.method,
+          reference: actionForm.reference || undefined,
+          date: actionForm.date || undefined,
+          note: actionForm.note || undefined,
+        })
+      } else if (type === 'EDIT') {
+        const qty = Number(actionForm.quantity)
+        const price = Number(actionForm.costPrice)
+        if (!qty || qty <= 0) return setActionError('Enter a valid quantity.')
+        if (price < 0) return setActionError('Enter a valid cost price.')
+        if (qty < item.returnedQty) return setActionError('Quantity cannot be less than the already-returned quantity.')
+        await api.put(`/purchases/${purchase._id}/items/${item._id}`, {
+          quantity: qty,
+          costPrice: price,
+          date: actionForm.date || undefined,
+        })
+      } else if (type === 'RETURN') {
+        const qty = Number(actionForm.qty)
+        if (!qty || qty <= 0) return setActionError('Enter a quantity to return.')
+        if (qty > (item.quantity ?? 0)) return setActionError(`Cannot return more than the current ${item.quantity} units.`)
+        await api.post(`/purchases/${purchase._id}/items/${item._id}/return`, {
+          qty,
+          reason: actionForm.reason || 'Product returned',
+        })
+      }
+      closeItemDialog()
+      refresh()
+    } catch (err) {
+      setActionError(getError(err))
+    } finally {
+      setActionSaving(false)
+    }
+  }
+
+  const doPayAll = async (target) => {
+    try {
+      if (target === 'GROUP') {
+        await api.post(`/purchases/suppliers/${groupData.supplier._id}/pay-all`)
+      } else {
+        await api.post(`/purchases/${target._id}/pay-all`)
+      }
+      refresh()
+    } catch (err) {
+      setError(getError(err))
+    }
+  }
+
+  const doCancelGroup = async () => {
     setDeleting(true)
     try {
-      await api.delete(`/purchases/${confirmDel._id}`)
-      setConfirmDel(null)
+      await api.put(`/purchases/suppliers/${groupData.supplier._id}/cancel-all`)
+      setConfirmDelete(null)
+      setGroupData(null)
       load()
     } catch (err) {
       setError(getError(err))
-      setConfirmDel(null)
     } finally {
       setDeleting(false)
     }
   }
 
+  const doDeleteItem = async () => {
+    const { item, purchase } = confirmDelete
+    setDeleting(true)
+    try {
+      await api.delete(`/purchases/${purchase._id}/items/${item._id}`)
+      setConfirmDelete(null)
+      refresh()
+    } catch (err) {
+      setError(getError(err))
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const doCancelPurchase = async () => {
+    setDeleting(true)
+    try {
+      await api.delete(`/purchases/${confirmDelete._id}`)
+      setConfirmDelete(null)
+      refresh()
+    } catch (err) {
+      setError(getError(err))
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const itemMenuItems = (purchase, item) => {
+    const returned = Boolean(item.returned) || item.paymentStatus === 'RETURNED'
+    const activeQty = Number(item.quantity) || 0
+    const editable = hasPermission('purchases.update') && !returned
+    const deletable = hasPermission('purchases.delete')
+    return [
+      { label: 'View Details', icon: 'bi-eye', onClick: () => setItemDetail(item) },
+      { show: editable && activeQty > 0 && (item.remaining ?? 0) > 0, label: 'Record Payment', icon: 'bi-cash-stack', iconClass: 'text-success', onClick: () => openItemDialog('PAY', purchase, item) },
+      { show: editable && activeQty > 0, label: 'Edit', icon: 'bi-pencil', onClick: () => openItemDialog('EDIT', purchase, item) },
+      { show: editable && activeQty > 0, label: 'Return Product', icon: 'bi-arrow-return-left', danger: true, onClick: () => openItemDialog('RETURN', purchase, item) },
+      { show: deletable && !returned, label: 'Delete Product', icon: 'bi-trash', danger: true, onClick: () => setConfirmDelete({ item, purchase }) },
+    ]
+  }
+
+  const itemPayments = (itemId) =>
+    (groupData?.payments || []).filter((p) => p.purchaseItem && String(p.purchaseItem) === String(itemId))
+
   return (
     <div>
       <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
         <h4 className="fw-bold mb-0" style={{ color: '#0d3b66' }}>
-          <i className="bi bi-bag me-2" />Purchases <span className="text-muted fs-6">({total})</span>
+          <i className="bi bi-bag me-2" />Purchases <span className="text-muted fs-6">({total} supplier{total === 1 ? '' : 's'} · {purchaseCount} order{purchaseCount === 1 ? '' : 's'})</span>
         </h4>
         {hasPermission('purchases.create') && (
           <Button onClick={openForm}><i className="bi bi-plus-lg me-1" />New Purchase</Button>
@@ -259,6 +425,14 @@ export default function Purchases() {
         {success && <Alert variant="success" dismissible onClose={() => setSuccess('')} className="py-2 small mb-3"><i className="bi bi-check-circle me-1" />{success}</Alert>}
 
         <div className="d-flex flex-wrap gap-2 mb-3">
+          <InputGroup size="sm" style={{ maxWidth: 260 }}>
+            <InputGroup.Text><i className="bi bi-search" /></InputGroup.Text>
+            <Form.Control placeholder="Search supplier / product / SKU / #" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1) }} />
+          </InputGroup>
+          <Form.Select size="sm" value={supplierFilter} onChange={(e) => { setSupplierFilter(e.target.value); setPage(1) }} style={{ maxWidth: 190 }}>
+            <option value="">All Suppliers</option>
+            {suppliers.map((s) => <option key={s._id} value={s._id}>{s.name}</option>)}
+          </Form.Select>
           <Form.Select size="sm" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }} style={{ maxWidth: 150 }}>
             <option value="ALL">All Statuses</option>
             <option value="RECEIVED">Received</option>
@@ -280,44 +454,345 @@ export default function Purchases() {
           <Form.Control size="sm" type="date" value={to} onChange={(e) => { setTo(e.target.value); setPage(1) }} style={{ maxWidth: 155 }} />
         </div>
 
-        <DataTable
-          columns={[
-            { key: 'purchaseNumber', label: 'Purchase #', render: (p) => (
-              <button className="btn btn-link text-decoration-none p-0 fw-semibold" style={{ color: '#0d3b66', fontSize: '0.85rem' }} onClick={() => openDetail(p)}>
-                {p.purchaseNumber}
-              </button>
-            )},
-            { key: 'createdAt', label: 'Date', render: (p) => formatDisplayDate(p.purchaseDate || p.createdAt) },
-            { key: 'type', label: 'Type', render: (p) => (
-              <Badge bg="" className={p.type === 'ON_DEMAND' ? 'badge-soft-warning' : 'badge-soft-secondary'}>{p.type === 'ON_DEMAND' ? 'On-demand' : 'Normal'}</Badge>
-            ) },
-            { key: 'supplier', label: 'Supplier', render: (p) => (
-              <span className="small">{p.supplier?.name || '-'}<br /><small className="text-muted">{p.supplier?.phone}</small></span>
-            )},
-            { key: 'items', label: 'Items', render: (p) => `${p.items?.length || 0} product(s)` },
-            { key: 'totalAmount', label: 'Total', render: (p) => <strong>{formatMoney(p.totalAmount)}</strong> },
-            { key: 'paymentStatus', label: 'Payment', render: (p) => <StatusBadge value={p.paymentStatus} /> },
-            { key: 'status', label: 'Status', render: (p) => <StatusBadge value={p.status} /> },
-            { key: 'actions', label: 'Actions', render: (p) => (
-              <div className="d-flex gap-1">
-                <Button size="sm" variant="light" className="border" title="View purchase" onClick={() => openDetail(p)}><i className="bi bi-eye" /></Button>
-                {p.status !== 'CANCELLED' && p.type !== 'ON_DEMAND' && hasPermission('purchases.update') && (
-                  <Button size="sm" variant="light" className="border" title="Edit purchase" onClick={() => openEdit(p)}><i className="bi bi-pencil" /></Button>
-                )}
-                {p.status !== 'CANCELLED' && hasPermission('purchases.delete') && (
-                  <Button size="sm" variant="outline-danger" title="Cancel purchase" onClick={() => setConfirmDel(p)}><i className="bi bi-trash" /></Button>
-                )}
-              </div>
-            )}
-          ]}
-          data={purchases}
-          loading={loading}
-          page={page}
-          pages={pages}
-          total={total}
-          onPageChange={setPage}
-        />
+        {loading ? (
+          <div className="text-center py-5 text-muted"><span className="spinner-border spinner-border-sm me-2" />Loading...</div>
+        ) : groups.length === 0 ? (
+          <div className="text-center py-5 text-muted empty-state"><i className="bi bi-inbox" />No purchase groups found.</div>
+        ) : (
+          <div className="d-flex flex-column gap-3">
+            {groups.map((g) => (
+              <Card key={g.supplier} className="border shadow-sm">
+                <Card.Body className="p-3">
+                  <div className="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                    <div className="d-flex align-items-start gap-2">
+                      <div className="rounded-circle bg-light d-flex align-items-center justify-content-center" style={{ width: 40, height: 40 }}>
+                        <i className="bi bi-truck" />
+                      </div>
+                      <div>
+                        <button className="btn btn-link text-decoration-none p-0 fw-semibold" style={{ color: '#0d3b66' }} onClick={() => openGroup(g)}>
+                          {g.supplierName}
+                        </button>
+                        {g.supplierPhone && <div className="small text-muted"><i className="bi bi-telephone me-1" />{g.supplierPhone}</div>}
+                        <div className="small text-muted">
+                          {g.purchaseCount} order{g.purchaseCount === 1 ? '' : 's'} · {g.activeProductCount} product{g.activeProductCount === 1 ? '' : 's'}
+                          {' · '}{formatDisplayDate(g.minDate)} — {formatDisplayDate(g.maxDate)}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="d-flex align-items-center gap-2">
+                      <StatusBadge value={g.status} />
+                      <ActionsMenu
+                        title="Supplier actions"
+                        items={[
+                          { label: 'View Purchases', icon: 'bi-collection', onClick: () => openGroup(g) },
+                          { show: hasPermission('purchases.update') && g.remainingAmount > 0, label: 'Pay All Balances', icon: 'bi-wallet2', iconClass: 'text-success', onClick: () => doPayAll('GROUP') },
+                          { show: hasPermission('purchases.delete'), divider: true },
+                          { show: hasPermission('purchases.delete'), label: 'Cancel All Purchases', icon: 'bi-x-circle', danger: true, onClick: () => setConfirmDelete({ group: g, cancelAll: true }) },
+                        ]}
+                      />
+                    </div>
+                  </div>
+                  <div className="row g-2 small mt-2 text-center">
+                    <div className="col-4 col-md-2"><div className="text-muted">Total</div><strong>{formatMoney(g.totalAmount)}</strong></div>
+                    <div className="col-4 col-md-2"><div className="text-muted">Paid</div><strong className="text-success">{formatMoney(g.totalPaid)}</strong></div>
+                    <div className="col-4 col-md-2"><div className="text-muted">Remaining</div><strong className="text-danger">{formatMoney(g.remainingAmount)}</strong></div>
+                    <div className="col-4 col-md-2"><div className="text-muted">Refunded</div><strong>{formatMoney(g.refundedAmount)}</strong></div>
+                    <div className="col-4 col-md-2"><div className="text-muted">Returned</div><strong>{g.returnedQty} pcs · {formatMoney(g.returnedValue)}</strong></div>
+                    <div className="col-4 col-md-2"><div className="text-muted">Products Paid</div><strong>{g.paidCount}/{g.paidCount + g.partialCount + g.unpaidCount}</strong></div>
+                  </div>
+                </Card.Body>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {pages > 1 && (
+          <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3">
+            <small className="text-muted">Page {page} of {pages} · {total.toLocaleString()} supplier groups</small>
+            <div className="d-flex gap-2">
+              <Button size="sm" variant="light" className="border" disabled={page <= 1} onClick={() => setPage(page - 1)}>Prev</Button>
+              <Button size="sm" variant="light" className="border" disabled={page >= pages} onClick={() => setPage(page + 1)}>Next</Button>
+            </div>
+          </div>
+        )}
       </Card>
+
+      {/* Supplier Group Detail Modal */}
+      <Modal show={Boolean(groupData)} onHide={() => !actionSaving && setGroupData(null)} size="xl" centered scrollable>
+        <Modal.Header closeButton={!actionSaving}>
+          <Modal.Title className="fs-6 fw-bold">
+            <i className="bi bi-truck me-2" />
+            {groupData?.supplier?.name || group?.supplierName || 'Purchases'}
+            <span className="text-muted fs-6 ms-2">{groupData?.supplier?.phone}</span>
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {error && <Alert variant="danger" dismissible onClose={() => setError('')} className="py-2 small mb-3">{error}</Alert>}
+          {groupData && (() => {
+            const t = groupData.totals
+            return (
+              <>
+                <div className="bg-light rounded p-3 mb-3 small">
+                  <Row className="g-2 text-center">
+                    <Col sm={3}><div className="text-muted">Total Value</div><strong>{formatMoney(t.totalAmount)}</strong></Col>
+                    <Col sm={3}><div className="text-muted">Total Paid</div><strong className="text-success">{formatMoney(t.totalPaid)}</strong></Col>
+                    <Col sm={3}><div className="text-muted">Balance</div><strong className="text-danger">{formatMoney(t.remainingAmount)}</strong></Col>
+                    <Col sm={3}><div className="text-muted">Returned</div><strong>{t.returnedQty} pcs · {formatMoney(t.returnedValue)}</strong></Col>
+                  </Row>
+                  <div className="d-flex flex-wrap gap-2 mt-2">
+                    <StatusBadge value={t.status} />
+                    <span className="text-muted">{t.activeProductCount}/{t.productCount} active product(s)</span>
+                  </div>
+                </div>
+
+                {groupData.purchases.map((p) => (
+                  <div key={p._id} className="border rounded mb-3 p-3">
+                    <div className="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                      <div>
+                        <button className="btn btn-link text-decoration-none p-0 fw-semibold" style={{ color: '#0d3b66' }} onClick={() => openPurchaseDetail(p)}>
+                          {p.purchaseNumber}
+                        </button>
+                        <div className="small text-muted">Date: {formatDisplayDate(p.purchaseDate)} · {p.type === 'ON_DEMAND' ? 'On-demand' : 'Normal'}</div>
+                      </div>
+                      <div className="d-flex align-items-center gap-2">
+                        <div className="small text-end">
+                          <div>Total: <strong>{formatMoney(p.totalAmount)}</strong></div>
+                          <div className="text-success">Paid: {formatMoney(p.amountPaid)}</div>
+                          <div className="text-danger">Due: {formatMoney(p.remainingAmount)}</div>
+                          {p.refundedAmount > 0 && <div>Refunded: {formatMoney(p.refundedAmount)}</div>}
+                        </div>
+                        <StatusBadge value={p.paymentStatus} />
+                        <ActionsMenu
+                          title="Purchase actions"
+                          items={[
+                            { label: 'View Purchase', icon: 'bi-eye', onClick: () => openPurchaseDetail(p) },
+                            { show: hasPermission('purchases.update') && p.status !== 'CANCELLED' && p.type !== 'ON_DEMAND', label: 'Edit Purchase', icon: 'bi-pencil', onClick: () => openEditPurchase(p) },
+                            { show: hasPermission('purchases.update') && p.remainingAmount > 0 && p.status !== 'CANCELLED', label: 'Pay All', icon: 'bi-wallet2', iconClass: 'text-success', onClick: () => doPayAll(p) },
+                            { show: hasPermission('purchases.delete') && p.status !== 'CANCELLED', divider: true },
+                            { show: hasPermission('purchases.delete') && p.status !== 'CANCELLED', label: 'Cancel Purchase', icon: 'bi-x-circle', danger: true, onClick: () => setConfirmDelete(p) },
+                          ]}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="table-responsive mt-2">
+                      <table className="table table-sm table-hover align-middle mb-0">
+                        <thead>
+                          <tr>
+                            <th>Product</th><th>SKU</th><th>Date</th><th className="text-end">Qty</th><th className="text-end">Cost</th>
+                            <th className="text-end">Value</th><th className="text-end">Paid</th><th className="text-end">Due</th><th>Payment</th><th>Status</th><th />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {p.items?.map((item) => {
+                            const returned = Boolean(item.returned) || item.paymentStatus === 'RETURNED'
+                            return (
+                              <tr key={item._id} className={returned ? 'opacity-50' : ''}>
+                                <td className="small">
+                                  <span className="fw-semibold">{item.productName}</span>
+                                  {item.returnedQty > 0 && <div className="text-muted small">{item.returnedQty} returned</div>}
+                                  {item.returnReason && item.returnedQty > 0 && <div className="text-muted small">{item.returnReason}</div>}
+                                </td>
+                                <td><code className="small">{item.sku || '-'}</code></td>
+                                <td className="small">{formatDisplayDate(item.purchaseDate || item.date)}</td>
+                                <td className="text-end">{item.quantity}</td>
+                                <td className="text-end small">{formatMoney(item.costPrice)}</td>
+                                <td className="text-end fw-semibold">{formatMoney(item.subtotal)}</td>
+                                <td className="text-end text-success">{formatMoney(item.amountPaid)}</td>
+                                <td className="text-end text-danger">{formatMoney(item.remaining)}</td>
+                                <td><StatusBadge value={item.paymentStatus} /></td>
+                                <td className="small">
+                                  {returned ? <Badge bg=""><span className="text-muted">{formatDisplayDate(item.returnedOn)}</span></Badge> : <Badge bg=""><span className="text-muted">{p.status}</span></Badge>}
+                                </td>
+                                <td className="text-end">
+                                  <ActionsMenu title="Product actions" items={itemMenuItems(p, item)} />
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))}
+
+                {groupData.purchases.length === 0 && (
+                  <div className="text-center text-muted py-4">No purchases found for this supplier.</div>
+                )}
+              </>
+            )
+          })()}
+        </Modal.Body>
+        <Modal.Footer>
+          {groupData && groupData.totals?.remainingAmount > 0 && hasPermission('purchases.update') && (
+            <Button variant="success" onClick={() => doPayAll('GROUP')}>
+              <i className="bi bi-wallet2 me-1" />Pay All Balances ({formatMoney(groupData.totals.remainingAmount)})
+            </Button>
+          )}
+          <Button variant="light" onClick={() => setGroupData(null)} disabled={actionSaving}>Close</Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Item detail modal */}
+      <Modal show={Boolean(itemDetail)} onHide={() => setItemDetail(null)} centered size="lg">
+        <Modal.Header closeButton><Modal.Title className="fs-6 fw-bold"><i className="bi bi-box-seam me-2" />Product Details</Modal.Title></Modal.Header>
+        <Modal.Body>
+          {itemDetail && (() => {
+            const it = itemDetail
+            return (
+              <>
+                <div className="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+                  <div>
+                    <h5 className="mb-0">{it.productName}</h5>
+                    {it.sku && <small className="text-muted">{it.sku}</small>}
+                  </div>
+                  <StatusBadge value={it.paymentStatus} />
+                </div>
+                <div className="row g-2 small mb-2">
+                  <div className="col-6 col-md-3"><span className="text-muted d-block">Quantity</span><strong>{it.quantity}</strong></div>
+                  <div className="col-6 col-md-3"><span className="text-muted d-block">Returned Qty</span><strong>{it.returnedQty || 0}</strong></div>
+                  <div className="col-6 col-md-3"><span className="text-muted d-block">Cost Price</span><strong>{formatMoney(it.costPrice)}</strong></div>
+                  <div className="col-6 col-md-3"><span className="text-muted d-block">Purchase Date</span><strong>{formatDisplayDate(it.purchaseDate || it.date)}</strong></div>
+                  <div className="col-6 col-md-3"><span className="text-muted d-block">Subtotal</span><strong>{formatMoney(it.subtotal)}</strong></div>
+                  <div className="col-6 col-md-3"><span className="text-muted d-block">Amount Paid</span><strong className="text-success">{formatMoney(it.amountPaid)}</strong></div>
+                  <div className="col-6 col-md-3"><span className="text-muted d-block">Remaining</span><strong className="text-danger">{formatMoney(it.remaining)}</strong></div>
+                  <div className="col-6 col-md-3"><span className="text-muted d-block">Purchase</span><strong><code>{it.purchaseNumber}</code></strong></div>
+                  {it.refundAmount > 0 && <div className="col-12"><span className="text-muted d-block">Refunded</span><strong className="text-warning">{formatMoney(it.refundAmount)}</strong></div>}
+                  {it.returnedOn && <div className="col-12"><span className="text-muted d-block">Returned On</span><strong>{new Date(it.returnedOn).toLocaleString()}</strong></div>}
+                  {it.returnReason && <div className="col-12"><span className="text-muted d-block">Return Reason</span><strong>{it.returnReason}</strong></div>}
+                </div>
+                <strong className="small text-uppercase text-muted d-block mb-1">Payment History (this product)</strong>
+                <div className="table-responsive">
+                  <table className="table table-sm table-hover align-middle mb-0">
+                    <thead><tr><th>Date</th><th className="text-end">Amount</th><th>Method</th><th>Ref</th><th>Type</th><th>By</th></tr></thead>
+                    <tbody>
+                      {itemPayments(it._id).length === 0 && <tr><td colSpan={6} className="text-center text-muted py-3">No payments recorded for this product yet.</td></tr>}
+                      {itemPayments(it._id).map((p) => (
+                        <tr key={p._id}>
+                          <td className="small">{new Date(p.date || p.createdAt).toLocaleString()}</td>
+                          <td className="text-end fw-semibold text-success">{formatMoney(p.amount)}</td>
+                          <td><StatusBadge value={p.paymentMethod} /></td>
+                          <td className="small">{p.reference || '-'}</td>
+                          <td>
+                            {p.type === 'REFUND'
+                              ? <Badge bg="" className="badge-soft-warning">Refund</Badge>
+                              : <Badge bg="" className="badge-soft-success">Payment</Badge>}
+                          </td>
+                          <td className="small">{p.receivedBy?.name || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )
+          })()}
+        </Modal.Body>
+      </Modal>
+
+      {/* Pay item */}
+      <Modal show={itemAction?.type === 'PAY'} onHide={closeItemDialog} centered backdrop="static">
+        <Form onSubmit={(e) => { e.preventDefault(); doItemAction() }}>
+          <Modal.Header closeButton={!actionSaving}><Modal.Title className="fs-6 fw-bold"><i className="bi bi-cash-stack me-2 text-success" />Record Payment — {itemAction?.item?.productName}</Modal.Title></Modal.Header>
+          <Modal.Body>
+            {actionError && <Alert variant="danger" className="py-2 small">{actionError}</Alert>}
+            <Alert variant="info" className="py-2 small">Remaining: <strong>{formatMoney(itemAction?.item?.remaining ?? 0)}</strong></Alert>
+            <Form.Group className="mb-2">
+              <Form.Label className="small fw-semibold">Payment Amount (RWF) *</Form.Label>
+              <Form.Control type="number" min="1" max={itemAction?.item?.remaining ?? undefined} value={actionForm.amount} onChange={(e) => setActionForm({ ...actionForm, amount: e.target.value })} required autoFocus />
+            </Form.Group>
+            <Form.Group className="mb-2">
+              <Form.Label className="small fw-semibold">Payment Method *</Form.Label>
+              <Form.Select value={actionForm.method} onChange={(e) => setActionForm({ ...actionForm, method: e.target.value })}>
+                {METHODS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </Form.Select>
+            </Form.Group>
+            <Form.Group className="mb-2">
+              <Form.Label className="small fw-semibold">Payment Date</Form.Label>
+              <Form.Control type="date" value={actionForm.date} onChange={(e) => setActionForm({ ...actionForm, date: e.target.value })} />
+            </Form.Group>
+            {(actionForm.method === 'MOMO' || actionForm.method === 'BANK') && (
+              <Form.Group className="mb-2">
+                <Form.Label className="small fw-semibold">Transaction Reference</Form.Label>
+                <Form.Control value={actionForm.reference} onChange={(e) => setActionForm({ ...actionForm, reference: e.target.value })} placeholder={actionForm.method === 'MOMO' ? 'MoMo TXN ID' : 'Bank slip no.'} />
+              </Form.Group>
+            )}
+            <Form.Group>
+              <Form.Label className="small">Notes</Form.Label>
+              <Form.Control as="textarea" rows={2} value={actionForm.note} onChange={(e) => setActionForm({ ...actionForm, note: e.target.value })} />
+            </Form.Group>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="light" type="button" onClick={closeItemDialog} disabled={actionSaving}>Cancel</Button>
+            <Button type="submit" variant="success" disabled={actionSaving}>
+              {actionSaving && <Spinner size="sm" className="me-1" />}Confirm Payment
+            </Button>
+          </Modal.Footer>
+        </Form>
+      </Modal>
+
+      {/* Edit item */}
+      <Modal show={itemAction?.type === 'EDIT'} onHide={closeItemDialog} centered backdrop="static">
+        <Form onSubmit={(e) => { e.preventDefault(); doItemAction() }}>
+          <Modal.Header closeButton={!actionSaving}><Modal.Title className="fs-6 fw-bold"><i className="bi bi-pencil me-2" />Edit Product — {itemAction?.item?.productName}</Modal.Title></Modal.Header>
+          <Modal.Body>
+            {actionError && <Alert variant="danger" className="py-2 small">{actionError}</Alert>}
+            <Alert variant="warning" className="py-2 small"><i className="bi bi-info-circle me-1" />Stock will be adjusted automatically when you change the quantity.</Alert>
+            <Row className="g-3">
+              <Col md={4}>
+                <Form.Group>
+                  <Form.Label className="small fw-semibold">Quantity *</Form.Label>
+                  <Form.Control type="number" min="1" value={actionForm.quantity} onChange={(e) => setActionForm({ ...actionForm, quantity: e.target.value })} />
+                </Form.Group>
+              </Col>
+              <Col md={4}>
+                <Form.Group>
+                  <Form.Label className="small fw-semibold">Cost Price (RWF) *</Form.Label>
+                  <Form.Control type="number" min="0" value={actionForm.costPrice} onChange={(e) => setActionForm({ ...actionForm, costPrice: e.target.value })} />
+                </Form.Group>
+              </Col>
+              <Col md={4}>
+                <Form.Group>
+                  <Form.Label className="small fw-semibold">Recorded Date</Form.Label>
+                  <Form.Control type="date" value={actionForm.date} onChange={(e) => setActionForm({ ...actionForm, date: e.target.value })} />
+                </Form.Group>
+              </Col>
+            </Row>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="light" type="button" onClick={closeItemDialog} disabled={actionSaving}>Cancel</Button>
+            <Button type="submit" disabled={actionSaving}>
+              {actionSaving ? <><Spinner size="sm" className="me-1" />Saving...</> : 'Save Changes'}
+            </Button>
+          </Modal.Footer>
+        </Form>
+      </Modal>
+
+      {/* Return item */}
+      <Modal show={itemAction?.type === 'RETURN'} onHide={closeItemDialog} centered backdrop="static">
+        <Form onSubmit={(e) => { e.preventDefault(); doItemAction() }}>
+          <Modal.Header closeButton={!actionSaving}><Modal.Title className="fs-6 fw-bold"><i className="bi bi-arrow-return-left me-2" />Return Product — {itemAction?.item?.productName}</Modal.Title></Modal.Header>
+          <Modal.Body>
+            {actionError && <Alert variant="danger" className="py-2 small">{actionError}</Alert>}
+            <Alert variant="info" className="py-2 small">In stock on this purchase: <strong>{itemAction?.item?.quantity ?? 0} pcs</strong>. Paid: <strong>{formatMoney(itemAction?.item?.amountPaid ?? 0)}</strong></Alert>
+            <Form.Group className="mb-2">
+              <Form.Label className="small fw-semibold">Quantity to Return *</Form.Label>
+              <Form.Control type="number" min="1" max={itemAction?.item?.quantity ?? 1} value={actionForm.qty} onChange={(e) => setActionForm({ ...actionForm, qty: e.target.value })} required autoFocus />
+            </Form.Group>
+            <Form.Group>
+              <Form.Label className="small fw-semibold">Reason</Form.Label>
+              <Form.Control value={actionForm.reason} onChange={(e) => setActionForm({ ...actionForm, reason: e.target.value })} placeholder="Optional reason" />
+            </Form.Group>
+            <p className="small text-muted mt-2 mb-0"><i className="bi bi-info-circle me-1" />Returning a paid product will record a refund for the paid amount proportionally.</p>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="light" type="button" onClick={closeItemDialog} disabled={actionSaving}>Cancel</Button>
+            <Button type="submit" variant="warning" disabled={actionSaving}>
+              {actionSaving && <Spinner size="sm" className="me-1" />}Return Product
+            </Button>
+          </Modal.Footer>
+        </Form>
+      </Modal>
 
       {/* Create / Edit Purchase Modal */}
       <Modal show={showForm} onHide={() => !saving && setShowForm(false)} size="lg" centered backdrop="static">
@@ -418,7 +893,7 @@ export default function Purchases() {
                   </Col>
                   <Col md={1}>
                     {form.items.length > 1 && (
-                      <Button size="sm" variant="outline-danger" onClick={() => removeItem(idx)}><i className="bi bi-x" /></Button>
+                      <Button size="sm" variant="outline-danger" onClick={() => removeFormItem(idx)}><i className="bi bi-x" /></Button>
                     )}
                   </Col>
                 </Row>
@@ -436,7 +911,7 @@ export default function Purchases() {
         </Form>
       </Modal>
 
-      {/* Detail Modal */}
+      {/* Purchase Detail Modal */}
       <Modal show={showDetail} onHide={() => setShowDetail(null)} size="lg" centered>
         <Modal.Header closeButton>
           <Modal.Title className="fs-6 fw-bold">
@@ -481,15 +956,17 @@ export default function Purchases() {
                 <strong className="small d-block mb-2">Items Purchased</strong>
                 <div className="table-responsive mb-3">
                   <table className="table table-sm table-hover align-middle mb-0">
-                    <thead><tr><th>Product</th><th>SKU</th><th>Qty</th><th>Cost</th><th>Subtotal</th></tr></thead>
+                    <thead><tr><th>Product</th><th>SKU</th><th>Qty</th><th>Cost</th><th>Subtotal</th><th>Paid</th><th>Payment</th></tr></thead>
                     <tbody>
                       {p.items?.map((item, i) => (
                         <tr key={i}>
                           <td className="small">{item.productName || item.product?.name}</td>
                           <td><code className="small">{item.sku || item.product?.sku}</code></td>
-                          <td>{item.quantity}</td>
+                          <td>{item.quantity}{item.returnedQty > 0 ? <span className="text-muted"> ({item.returnedQty} ret.)</span> : ''}</td>
                           <td>{formatMoney(item.costPrice)}</td>
                           <td className="fw-semibold">{formatMoney(item.subtotal)}</td>
+                          <td className="text-success">{formatMoney(item.amountPaid)}</td>
+                          <td><StatusBadge value={item.paymentStatus} /></td>
                         </tr>
                       ))}
                     </tbody>
@@ -501,14 +978,20 @@ export default function Purchases() {
                     <strong className="small d-block mb-2">Supplier Payments</strong>
                     <div className="table-responsive">
                       <table className="table table-sm table-hover align-middle mb-0">
-                        <thead><tr><th>#</th><th>Date</th><th>Amount</th><th>Method</th><th>By</th></tr></thead>
+                        <thead><tr><th>#</th><th>Date</th><th>Amount</th><th>Type</th><th>Method</th><th>Product</th><th>By</th></tr></thead>
                         <tbody>
                           {detailData.payments.map((pay) => (
                             <tr key={pay._id}>
                               <td><code className="small">{pay.paymentNumber}</code></td>
                               <td className="small">{new Date(pay.date).toLocaleDateString()}</td>
                               <td className="fw-semibold text-success">{formatMoney(pay.amount)}</td>
+                              <td>
+                                {pay.type === 'REFUND'
+                                  ? <Badge bg="" className="badge-soft-warning">Refund</Badge>
+                                  : <Badge bg="" className="badge-soft-success">Payment</Badge>}
+                              </td>
                               <td><StatusBadge value={pay.paymentMethod} /></td>
+                              <td className="small">{pay.itemName || '-'}</td>
                               <td className="small">{pay.receivedBy?.name}</td>
                             </tr>
                           ))}
@@ -532,15 +1015,22 @@ export default function Purchases() {
         </Modal.Body>
       </Modal>
 
+      {/* Confirm dialogs */}
       <ConfirmDialog
-        show={Boolean(confirmDel)}
-        onClose={() => setConfirmDel(null)}
-        title="Cancel Purchase"
-        message={`Cancel purchase "${confirmDel?.purchaseNumber}"? Stock will be reversed.`}
-        confirmLabel="Cancel Purchase"
+        show={Boolean(confirmDelete)}
+        onClose={() => setConfirmDelete(null)}
+        title={confirmDelete?.cancelAll ? 'Cancel All Purchases' : confirmDelete?.item ? 'Delete Product' : 'Cancel Purchase'}
+        message={
+          confirmDelete?.cancelAll
+            ? `Cancel every purchase for ${confirmDelete.group?.supplierName}? All stock will be reversed and all paid amounts refunded.`
+            : confirmDelete?.item
+              ? `Delete "${confirmDelete.item.productName}" from purchase ${confirmDelete.purchase?.purchaseNumber}? Stock will be reversed and any paid amount refunded.`
+              : `Cancel purchase "${confirmDelete?.purchaseNumber}"? Stock will be reversed.`
+        }
+        confirmLabel={confirmDelete?.cancelAll ? 'Cancel All' : confirmDelete?.item ? 'Delete Product' : 'Cancel Purchase'}
         variant="danger"
         loading={deleting}
-        onConfirm={doDelete}
+        onConfirm={confirmDelete?.cancelAll ? doCancelGroup : confirmDelete?.item ? doDeleteItem : doCancelPurchase}
       />
 
       {/* Quick add supplier modal */}
